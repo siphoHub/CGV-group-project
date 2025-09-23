@@ -1,0 +1,21 @@
+facility-run/
+├─ .github/
+│  └─ workflows/
+│     └─ ci.yml
+├─ public/
+│  └─ assets/            # sounds, images, models go here
+├─ src/
+│  ├─ main.js            # entry point
+│  ├─ core/              # Person 1: scene/cameras/level-loader
+│  │  ├─ app.js
+│  │  ├─ cameras.js
+│  │  └─ levelLoader.js
+│  ├─ controls/          # Person 2
+│  ├─ lighting/          # Person 3
+│  ├─ env/               # Person 4 (levels, props)
+│  └─ gameplay/          # Person 5 (objectives, HUD, audio)
+├─ index.html
+├─ vite.config.js
+├─ .gitignore
+├─ package.json
+└─ README.md
