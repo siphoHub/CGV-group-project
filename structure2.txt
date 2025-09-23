@@ -1,7 +1,7 @@
-facility-run/
-├─ .github/
-│  └─ workflows/
-│     └─ ci.yml
+.
+├── eslint.config.js
+├── index.html
+├── node_modules
 ├─ public/
 │  └─ assets/            # sounds, images, models go here
 ├─ src/
