@@ -21,7 +21,7 @@ scene.fog = new THREE.Fog(0x000000, 8, 30);
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-15);
+camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
 
 // --- Dev helpers (ignored by interaction) ---
@@ -241,7 +241,7 @@ function initializeGame() {
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(0, 1.7, 5);   // <- your gameplay spawn
+  camera.position.set(0, 1.7, -5);   // <- your gameplay spawn
   camera.lookAt(0, 1.7, 0);
 }
 
