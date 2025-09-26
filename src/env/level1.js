@@ -12,8 +12,13 @@ export default function loadLevel1(scene) {
     (gltf) => {                    
       const lobby = gltf.scene;
       lobby.scale.set(1, 1, 1);
-      lobby.position.set(0, 0, 0);
-
+      
+      // Compute bounds and lift model so its base sits on y=0
+      const box = new THREE.Box3().setFromObject(lobby);
+      const min = box.min; // lowest corner in world space
+      if (Number.isFinite(min.y)) {
+        lobby.position.y += -min.y; // lift by the amount below y=0
+      }
       // Enable shadows on all meshes
       lobby.traverse((child) => {
         if (child.isMesh) {
