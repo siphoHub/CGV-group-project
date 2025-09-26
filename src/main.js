@@ -23,10 +23,6 @@ loadLevel("level1", scene);
 
 scene.add(camera);
 
-
-const { controls, update } = createControls(camera, renderer.domElement);
-
-
 scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 scene.add(new THREE.HemisphereLight(0x88aaff, 0x202030, 0.4));
 scene.add(new THREE.GridHelper(40, 40));
@@ -121,7 +117,7 @@ function animate(t) {
   if(move.right) controls.moveRight(speed);
 
   renderer.render(scene, camera);
-  requestAnimationFrame(loop);
+  requestAnimationFrame(animate);
 }
 
  requestAnimationFrame(animate);
