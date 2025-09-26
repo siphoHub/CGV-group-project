@@ -96,6 +96,7 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+}
 
 function resetPlayer(){
   camera.position.set(0,1.7,5);
