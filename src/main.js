@@ -6,6 +6,7 @@ import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
 
+
 // --- Renderer ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -30,8 +31,80 @@ grid.userData.ignoreInteract = true;
 axes.userData.ignoreInteract = true;
 scene.add(grid, axes);
 
-// --- Controls ---
-const { controls, update } = createControls(camera, renderer.domElement);
+// Controls (we also grab setColliders)
+const { controls, update, setColliders } = createControls(camera, renderer.domElement);
+
+// --- collision state we receive from the level ---
+const collisionState = {
+  colliders: [],
+  passthrough: [],
+  rayTargets: []
+};
+
+window.addEventListener("level:colliders", (e) => {
+  const d = e.detail || {};
+  collisionState.colliders   = d.colliders   || [];
+  collisionState.passthrough = d.passthrough || [];
+  collisionState.rayTargets  = d.rayTargets  || [];
+  setColliders(collisionState);
+  console.log("[main] received colliders:", collisionState.colliders.length, "passthrough:", collisionState.passthrough.length);
+});
+
+// ====== ONE-KEY “STAMP A DOOR HERE” ======
+const doorHelpers = [];
+function addDoorAtCrosshair() {
+  // Ray from screen center
+  const ray = new THREE.Raycaster();
+  const mouse = new THREE.Vector2(0, 0);
+  ray.setFromCamera(mouse, camera);
+  // try to hit real geometry first
+  const hits = ray.intersectObjects(collisionState.rayTargets.length ? collisionState.rayTargets : scene.children, true);
+
+  // Doorway box parameters (tweak if needed)
+  const DOOR_WIDTH  = 1.2;   // meters
+  const DOOR_HEIGHT = 2.2;   // meters
+  const DOOR_DEPTH  = 0.6;   // meters (how deep the pass region is)
+
+  let center;
+  if (hits.length) {
+    center = hits[0].point.clone();
+  } else {
+    // No hit? Put it ~2m in front of camera.
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    center = camera.position.clone().addScaledVector(forward, 2.0);
+  }
+
+  // Build a Box3 centered at 'center'
+  const min = new THREE.Vector3(
+    center.x - DOOR_WIDTH * 0.5,
+    center.y - DOOR_HEIGHT * 0.5,
+    center.z - DOOR_DEPTH * 0.5
+  );
+  const max = new THREE.Vector3(
+    center.x + DOOR_WIDTH * 0.5,
+    center.y + DOOR_HEIGHT * 0.5,
+    center.z + DOOR_DEPTH * 0.5
+  );
+  const doorBox = new THREE.Box3(min, max);
+
+  // Add to passthrough list and push to controls
+  collisionState.passthrough.push(doorBox);
+  setColliders(collisionState);
+
+  // Visual helper so you see where the door is
+  const helper = new THREE.Box3Helper(doorBox, 0x22cc22);
+  helper.userData.ignoreInteract = true;
+  scene.add(helper);
+  doorHelpers.push(helper);
+
+  console.log("[main] stamped doorway. passthrough count:", collisionState.passthrough.length);
+}
+
+// Key: press P to stamp a doorway where you’re looking
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyP") addDoorAtCrosshair();
+});
 
 // --- Music ---
 // Audio system for background music by DELOSound on pixabay
@@ -87,7 +160,7 @@ cutscene.play(
     if (levelLoaded) {
       initializeGame();
     } else {
-      gameInitialized = true; // Mark that we're ready to initialize when level loads
+      readyToInit = true; // Mark that we're ready to initialize when level loads
     }
   },
   // Callback to start level loading during cutscene
@@ -116,7 +189,7 @@ function loadLevelInBackground() {
   console.log("Level loaded!");
   
   // If cutscene already finished, initialize game now
-  if (gameInitialized) {
+  if (readyToInit) {
     initializeGame();
   }
 }
@@ -171,6 +244,7 @@ function resetPlayer() {
   camera.position.set(0, 1.7, 5);   // <- your gameplay spawn
   camera.lookAt(0, 1.7, 0);
 }
+
 addEventListener("keydown", (e) => { if (e.code === "KeyR") resetPlayer(); });
 
 // world->screen (for indicator)
