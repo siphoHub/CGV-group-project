@@ -108,7 +108,7 @@ function animate(t) {
   if(move.right) controls.moveRight(speed);
 
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  requestAnimationFrame(loop);
 }
 
  requestAnimationFrame(animate);
