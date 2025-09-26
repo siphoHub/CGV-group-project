@@ -3,15 +3,15 @@ import * as THREE from "three";
 import { loadLevel } from "./core/levelLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
+import { createControls } from "./controls/controls.js";
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.setSize(innerWidth, innerHeight);
+document.body.style.margin = "0";
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
-scene.fog = new THREE.Fog(0x000000, 8, 30);
+scene.background = new THREE.Color(0x101014);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0,0.3,15);
@@ -21,12 +21,16 @@ camera.lookAt(0, 0.3, 0);
 //LOADL LEVELS
 loadLevel("level1", scene);
 
-// temp lights (Person 3 will replace)
-scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
-const spot = new THREE.SpotLight(0xffffff, 1.0, 20, Math.PI / 6, 0.3);
-spot.position.set(4, 6, 4);
-spot.castShadow = true;
-scene.add(spot);
+scene.add(camera);
+
+
+const { controls, update } = createControls(camera, renderer.domElement);
+
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+scene.add(new THREE.HemisphereLight(0x88aaff, 0x202030, 0.4));
+scene.add(new THREE.GridHelper(40, 40));
+scene.add(new THREE.AxesHelper(2));
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 dirLight.position.set(5, 10, 5);
@@ -92,8 +96,21 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+
+function resetPlayer(){
+  camera.position.set(0,1.7,5);
+  camera.lookAt(0,1,0);
 }
-window.addEventListener("resize", onResize);
+resetPlayer();
+addEventListener('keydown', e => { if (e.code === 'KeyR') resetPlayer(); });
+
+
+addEventListener("resize", () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+});
+
 
 function animate(t) {
   const speed = 0.1;
@@ -102,9 +119,9 @@ function animate(t) {
   if(move.left) controls.moveRight(-speed);
   if(move.right) controls.moveRight(speed);
 
-
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  requestAnimationFrame(loop);
 }
-requestAnimationFrame(animate);
+
+ requestAnimationFrame(animate);
 
