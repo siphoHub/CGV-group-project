@@ -2,14 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Facility Run</title>
     <style>
       html, body { margin: 0; height: 100%; background:#000; }
+      #hud { position: fixed; bottom: 12px; right: 12px; color:rgb(244, 14, 14); font:14px system-ui; }
       canvas { display:block; }
     </style>
   </head>
   <body>
+    <div id="hud">WASD to move • Mouse to look • P to see Controls</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
