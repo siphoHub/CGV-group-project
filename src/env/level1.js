@@ -39,15 +39,15 @@ export default function loadLevel1(scene) {
               child.name === "Flash_Light_Cover_high" || 
               child.name === "Flash_Light_Metal_high" || 
               child.name === "AA Battery.001"){
-                 child.userData.interactable = true;
+                 child.userData.interactable = false; // Not interactable until generator on
                  console.log(`[Interactable] Marked as interactable: ${child.name}`);
           }
             
           // Mark generator as found but not initially interactable
           if (child.name === "powerpulse1") {
-            child.userData.interactable = false; // Not interactable until flashlight obtained
+            child.userData.interactable = true; // Interactable from the start
             child.userData.isGenerator = true; // Flag to identify it as generator
-            console.log(`[Generator] Found powerpulse1 generator object - will become interactable after flashlight pickup`);
+            console.log(`[Generator] Found powerpulse1 generator object - interactable from start`);
           }
           
           // Move flashlight parts to reception desk location

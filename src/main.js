@@ -33,7 +33,6 @@ camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
 
 
-
 // --- Dev helpers (ignored by interaction) ---
 const grid = new THREE.GridHelper(40, 40);
 const axes = new THREE.AxesHelper(2);
@@ -113,7 +112,9 @@ function addDoorAtCrosshair() {
 
 // Key: press P to stamp a doorway where you’re looking
 addEventListener("keydown", (e) => {
-  if (e.code === "KeyP") addDoorAtCrosshair();
+  if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
+    addDoorAtCrosshair();
+  } 
 });
 
 // --- Music ---
@@ -122,7 +123,7 @@ let backgroundMusic = null;
 
 function startBackgroundMusic() {
   if (!backgroundMusic) {
-    backgroundMusic = new Audio('./assets/scary-horror-music-351315.mp3');
+    backgroundMusic = new Audio('/models/assets/scary-horror-music-351315.mp3');
     backgroundMusic.loop = true;
     backgroundMusic.volume = 0.3; // Set volume to 30% so it's not too loud
 
@@ -143,13 +144,33 @@ function stopBackgroundMusic() {
   if (backgroundMusic) {
     backgroundMusic.pause();
     backgroundMusic.currentTime = 0;
-    backgroundMusic = null;
+  }
+}
+
+function fadeBackgroundMusic() {
+  if (backgroundMusic) {
+    const fadeDuration = 2000; // milliseconds
+    const fadeSteps = 20;
+    const stepTime = fadeDuration / fadeSteps;
+    let currentStep = 0;
+    const initialVolume = backgroundMusic.volume;
+
+    const fadeInterval = setInterval(() => {
+      currentStep++;
+      backgroundMusic.volume = initialVolume * (1 - currentStep / fadeSteps);
+      if (currentStep >= fadeSteps) {
+        clearInterval(fadeInterval);
+        backgroundMusic.pause();
+        backgroundMusic.currentTime = 0;
+      }
+    }, stepTime);
   }
 }
 
 function toggleBackgroundMusic() {
   if (backgroundMusic) {
     if (backgroundMusic.paused) {
+      backgroundMusic.volume = 0.3;
       backgroundMusic.play().catch(err => console.log("Failed to resume audio:", err));
       console.log("Background music resumed");
     } else {
@@ -157,6 +178,9 @@ function toggleBackgroundMusic() {
     }
   }
 }
+
+// --- Start Music ---
+startBackgroundMusic();
 
 // --- Cutscene + parallel level load ---
 const cutscene = new OpeningCutscene();
@@ -167,8 +191,11 @@ let readyToInit = false;
 cutscene.play(
   // Callback when cutscene completes
   () => {
+    // Stop cutscene music the moment cutscene finishes/skips
+
     if (levelLoaded) {
       initializeGame(lights);
+      fadeBackgroundMusic();
     } else {
       readyToInit = true; // Mark that we're ready to initialize when level loads
     }
@@ -188,7 +215,7 @@ function loadLevelInBackground() {
   loadLevel("level1", scene);
 
   lights=createLighting(scene,camera);
-  gameController=new GameController(scene,camera,lights);
+  gameController=new GameController(scene,camera,lights, controls);
 
   // Add lights
   //scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
@@ -216,8 +243,6 @@ function initializeGame(lights) {
   // place player at spawn (you can tune this)
   resetPlayer();
 
-  // music
-  startBackgroundMusic();
   document.addEventListener("keydown", (e) => { if (e.code === "KeyM") toggleBackgroundMusic(); });
 
   // interaction indicator UI

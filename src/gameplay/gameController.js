@@ -3,25 +3,28 @@ import * as THREE from 'three';
 import { HUD } from './hud.js';
 
 export class GameController {
-  constructor(scene, camera,lights) {
+  constructor(scene, camera,lights, controls) {
     this.scene = scene;
     this.camera = camera;
     this.hud = new HUD();
     this.lights=lights;
     this.flashlight = lights.flashlight;
+    this.controls = controls;
     this.generatorActivated = false; // Track generator state
 
+    this.addObjective("Turn on Power");
+
     // Audio system for sound effects
-    this.itemPickupSound = new Audio('./assets/ItemPickupSound.mp3');
+    this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
     this.itemPickupSound.volume = 0.5; // Set volume to 50%
 
-    this.flashlightSwitchSound = new Audio('./assets/FlashlightSwitch.mp3');
+    this.flashlightSwitchSound = new Audio('../public/models/assets/FlashlightSwitch.mp3');
     this.flashlightSwitchSound.volume = 1; // Set volume to 100%
     
-    this.generatorSound = new Audio('./assets/GeneratorTurnedOn.mp3');
+    this.generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
     this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
     
-    this.scaryScreamSound = new Audio('./assets/ScaryScream.mp3');
+    this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
 
     // Initialize lighting to normal state
@@ -34,8 +37,12 @@ export class GameController {
     // F key for flashlight toggle
     document.addEventListener('keydown', (event) =>
     {
+      // If paused, ignore most gameplay hotkeys except unpausing
+      const paused = this.isPaused();
+
       if (event.code === 'KeyF') {
         event.preventDefault();
+        if (paused) return; 
         const flashlightState = this.hud.getFlashlightState();
 
         // Only play sound if player has obtained the flashlight
@@ -49,7 +56,10 @@ export class GameController {
       // P key for pause menu
       if (event.code === 'KeyP') {
         event.preventDefault();
-        this.togglePause();
+        const isPaused = this.togglePause();  // updates HUD state
+        if (isPaused && this.controls) {
+          this.controls.unlock();
+        }
       }
     });
 
@@ -75,15 +85,10 @@ export class GameController {
         //no main lights since the flashlight is picked up
         this.dimSceneLights(true);
         
-        // Add new objective when flashlight is picked up
-        this.addObjective("Get Power Back Up");
-        
-        // Make generator interactable now that flashlight is obtained
-        this.enableGeneratorInteraction();
-        
         // Play scary scream 0.5 seconds after pickup
         setTimeout(() => {
           this.playScaryScream();
+          this.completeObjective("Find a Flashlight");
         }, 500); // 0.5 seconds delay
         break;
 
@@ -96,13 +101,7 @@ export class GameController {
       default:
         // Handle generator object (only powerpulse1 and only after flashlight is obtained)
         if (object.name === "powerpulse1") {
-          // Check if player has flashlight first
-          const flashlightState = this.hud.getFlashlightState();
-          if (!flashlightState.hasFlashlight) {
-            console.log('[Generator] Cannot activate generator without flashlight');
-            return; // Exit early if no flashlight
-          }
-          
+
           // Only activate if generator hasn't been used before
           if (!this.generatorActivated) {
             // Play generator sound immediately (only once)
@@ -118,16 +117,20 @@ export class GameController {
             if (window.refreshInteractableCache) {
               window.refreshInteractableCache();
             }
+
+            // Make generator interactable now that flashlight is obtained
+            this.enableFlashLightInteraction();
             
             // Activate emergency lighting after 7 seconds (without sound)
             setTimeout(() => {
               this.setLightingState('emergency'); // Direct lighting change without sound
               
               // Mark "Get Power Back Up" objective as completed
-              this.completeObjective("Get Power Back Up");
+              this.completeObjective("Turn on power");
+              this.addObjective("Find a Flashlight");
               
               console.log(`[Generator] Emergency lights activated after delay: ${object.name}`);
-            }, 7000); // 7 seconds delay
+            }, 3000); // 3 seconds delay
             
             console.log(`[Generator] Generator started, emergency lights will activate in 7 seconds: ${object.name}`);
           }
@@ -226,7 +229,7 @@ export class GameController {
     console.log('Generator triggered - switching to emergency lighting');
     
     // Play generator sound effect if available
-    const generatorSound = new Audio('./assets/GeneratorTurnedOn.mp3');
+    const generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
     generatorSound.volume = 0.7;
     generatorSound.play().catch(() => {
       console.log('Generator sound failed to play');
@@ -265,6 +268,38 @@ export class GameController {
       window.updateInteractableCache();
     } else {
       console.log('[Generator] WARNING: updateInteractableCache not available!');
+    }
+  }
+
+  enableFlashLightInteraction() {
+    console.log('[Flashlight] Looking for generator to enable...');
+    let flashlightFound = false;
+    
+    this.scene.traverse((child) => {
+      if (child.name === "Flashlight Camping" ||
+              child.name === "Flash_Light_Body_high" || 
+              child.name === "Flash_Light_Cover_high" || 
+              child.name === "Flash_Light_Metal_high" || 
+              child.name === "AA Battery.001") {
+        console.log(`[Flashlight] Found flashlight objects, potentiallyInteractable: ${child.userData.potentiallyInteractable}, interactable: ${child.userData.interactable}`);
+        
+        // Make it interactable regardless of potentiallyInteractable flag
+        child.userData.interactable = true;
+        flashlightFound = true;
+        console.log('[Flashlight] Generator is now interactable after flashlight pickup');
+      }
+    });
+    
+    if (!flashlightFound) {
+      console.log('[Flashlight] WARNING: powerpulse1 object not found in scene!');
+    }
+    
+    // Force refresh the entire cache
+    if (window.updateInteractableCache) {
+      console.log('[Flashlight] Refreshing interactable cache...');
+      window.updateInteractableCache();
+    } else {
+      console.log('[Flashlight] WARNING: updateInteractableCache not available!');
     }
   }
 
