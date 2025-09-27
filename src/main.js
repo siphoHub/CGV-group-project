@@ -5,6 +5,7 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
+import {createLighting} from "./lighting/level1.js"
 
 
 // --- Renderer ---
@@ -23,6 +24,8 @@ scene.fog = new THREE.Fog(0x000000, 8, 30);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
+
+
 
 // --- Dev helpers (ignored by interaction) ---
 const grid = new THREE.GridHelper(40, 40);
@@ -115,17 +118,17 @@ function startBackgroundMusic() {
     backgroundMusic = new Audio('./assets/scary-horror-music-351315.mp3');
     backgroundMusic.loop = true;
     backgroundMusic.volume = 0.3; // Set volume to 30% so it's not too loud
-    
+
     // Play with user interaction (modern browsers require this)
     backgroundMusic.play().catch(error => {
-      
+
       // Add a one-time click listener to start music
       const playAudio = () => {
         backgroundMusic.play().catch(err => console.log("Failed to play audio:", err));
         document.removeEventListener('click', playAudio);
       };
       document.addEventListener('click', playAudio);
-    });  
+    });
   }
 }
 
@@ -158,7 +161,7 @@ cutscene.play(
   // Callback when cutscene completes
   () => {
     if (levelLoaded) {
-      initializeGame();
+      initializeGame(lights);
     } else {
       readyToInit = true; // Mark that we're ready to initialize when level loads
     }
@@ -169,40 +172,42 @@ cutscene.play(
   }
 );
 
+let gameController;
+let lights;
+
 function loadLevelInBackground() {
-  
+
   // Load the level
   loadLevel("level1", scene);
-  
+
+  lights=createLighting(scene,camera);
+  gameController=new GameController(scene,camera,lights);
+
   // Add lights
-  scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
+  //scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
   const spot = new THREE.SpotLight(0xffffff, 1.0, 20, Math.PI / 6, 0.3);
   spot.position.set(4, 6, 4);
   spot.castShadow = true;
   scene.add(spot);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-  dirLight.position.set(5, 10, 5);
-  scene.add(dirLight);
-  
+  //const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+  //dirLight.position.set(5, 10, 5);
+  //scene.add(dirLight);
+
   levelLoaded = true;
   console.log("Level loaded!");
-  
+
   // If cutscene already finished, initialize game now
   if (readyToInit) {
-    initializeGame();
+    initializeGame(lights); //passing lights to the initializeGame function
   }
 }
-// --- Game init (HUD + interaction loop) ---
-let gameController;
+// --- Game init (HUD + interaction loop) --
 let interactionIndicator;
 
-function initializeGame() {
+function initializeGame(lights) {
   // place player at spawn (you can tune this)
   resetPlayer();
-
-  // HUD / gameplay systems
-  gameController = new GameController(scene, camera);
 
   // music
   startBackgroundMusic();
