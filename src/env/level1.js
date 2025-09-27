@@ -21,6 +21,18 @@ export default function loadLevel1(scene) {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
+          
+          // Log all mesh names to help identify generator objects
+          if (child.name) {
+            console.log(`[Level1] Found mesh: ${child.name}`);
+            
+            // Check for potential generator-related names
+            const name = child.name.toLowerCase();
+            if (name === 'powerpulse1') {
+              console.log(`[POTENTIAL GENERATOR] Found generator object: ${child.name}`);
+            }
+          }
+          
          // mark objects as interactable. person doing interactions to replace
           if (child.name === "Flashlight Camping" ||
               child.name === "Flash_Light_Body_high" || 
@@ -28,9 +40,18 @@ export default function loadLevel1(scene) {
               child.name === "Flash_Light_Metal_high" || 
               child.name === "AA Battery.001"){
                  child.userData.interactable = true;
+                 console.log(`[Interactable] Marked as interactable: ${child.name}`);
+          }
             
-            // Move flashlight parts to reception desk location
-            if (child.name.includes("Flash_Light")) {
+          // Mark generator as found but not initially interactable
+          if (child.name === "powerpulse1") {
+            child.userData.interactable = false; // Not interactable until flashlight obtained
+            child.userData.isGenerator = true; // Flag to identify it as generator
+            console.log(`[Generator] Found powerpulse1 generator object - will become interactable after flashlight pickup`);
+          }
+          
+          // Move flashlight parts to reception desk location
+          if (child.name.includes("Flash_Light")) {
               child.position.set(0.1, -0.4, 0); // Reception desk position (adjust as needed)
               
               // Rotate flashlight 135 degrees around X axis (horizontal)
@@ -52,7 +73,6 @@ export default function loadLevel1(scene) {
               // Store reference to aura for interaction detection
               child.userData.aura = whiteAura;
             }
-          }
         }
       });
 

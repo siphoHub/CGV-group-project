@@ -9,9 +9,16 @@ import {createLighting} from "./lighting/level1.js"
 
 
 // --- Renderer ---
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ 
+  antialias: true,
+  powerPreference: "high-performance",
+  stencil: false,  // Disable stencil buffer if not used
+  depth: true
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // Use faster shadow map type
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
 document.body.style.margin = "0";
 document.body.appendChild(renderer.domElement);
 
@@ -260,6 +267,42 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
+// Cache interactable objects to avoid scene traversal every frame
+let cachedInteractables = [];
+
+// Make cache globally accessible for GameController
+window.cachedInteractables = cachedInteractables;
+
+function updateInteractableCache() {
+  cachedInteractables = [];
+  scene.traverse((obj) => {
+    if (obj.userData?.interactable) {
+      cachedInteractables.push(obj);
+    }
+  });
+  // Update global reference
+  window.cachedInteractables = cachedInteractables;
+  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`);
+}
+
+// Add function to refresh cache when objects become non-interactable
+function refreshInteractableCache() {
+  cachedInteractables = cachedInteractables.filter(obj => 
+    obj.parent && obj.userData?.interactable
+  );
+}
+
+// Make refresh function globally accessible
+window.refreshInteractableCache = refreshInteractableCache;
+
+// Make update function globally accessible  
+window.updateInteractableCache = updateInteractableCache;
+
+// Update cache when level loads
+window.addEventListener("level:colliders", () => {
+  setTimeout(updateInteractableCache, 100); // Small delay to ensure scene is fully loaded
+});
+
 function checkForInteractables() {
   if (!interactionIndicator || !controls.isLocked) return;
 
@@ -268,23 +311,38 @@ function checkForInteractables() {
   let best = interactionDistance;
   let flashlightTaken = false;
 
-  scene.traverse((obj) => {
-    if (!obj.userData?.interactable) return;
+  // Use cached interactables instead of scene.traverse
+  for (const obj of cachedInteractables) {
+    if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
+    
     const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
 
-    // optional special casing for flashlight aura
+    // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
       obj.userData.aura.material.opacity = d <= interactionDistance ? 0.2 : 0.0;
       if (d <= interactionDistance && !flashlightTaken) { target = obj; best = d; flashlightTaken = true; }
-      return;
+      continue;
     }
 
+    // Handle generators and other interactables (no aura effect for generators)
     if (!flashlightTaken && d <= interactionDistance && d < best) { target = obj; best = d; }
-  });
+  }
 
   if (target) {
     interactionIndicator.style.display = "block";
-    const p = target.getWorldPosition(new THREE.Vector3()); p.y += 0.5;
+    const p = target.getWorldPosition(new THREE.Vector3()); 
+    
+    // Check if target is a generator to customize the prompt
+    const isGenerator = target.name === "powerpulse1";
+    
+    if (isGenerator) {
+      p.y += 0.2; // Lower position for generator
+      interactionIndicator.textContent = "Press E to Turn on";
+    } else {
+      p.y += 0.5; // Higher position for other objects
+      interactionIndicator.textContent = "Press E to interact";
+    }
+    
     const s = worldToScreen(p);
     interactionIndicator.style.left = `${s.x}px`;
     interactionIndicator.style.top = `${s.y}px`;
@@ -303,13 +361,19 @@ addEventListener("resize", () => {
 
 // --- Animate ---
 const clock = new THREE.Clock();
+let frameCount = 0;
 function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
+  frameCount++;
 
   update(dt);                                   // drive unified controls
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
-    checkForInteractables();                    // proximity UI
+    
+    // Only check for interactables every 3 frames to reduce performance impact
+    if (frameCount % 3 === 0) {
+      checkForInteractables();                  // proximity UI
+    }
   }
 
   renderer.render(scene, camera);

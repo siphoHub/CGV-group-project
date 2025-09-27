@@ -82,41 +82,55 @@ export function createControls(camera, domElement) {
     return false;
   }
 
-  // ---------- MULTI-RAY CLEARANCE TEST ----------
-  // Cast 9 rays (3 heights × 3 sideways offsets). If ANY hits triangles within the step, it's blocked.
+  // ---------- OPTIMIZED MULTI-RAY CLEARANCE TEST ----------
+  // Reduced from 9 rays to 5 rays (3 heights × center + 2 heights × sides) for better performance
   function volumeClear(origin, intendedDir, stepDist) {
     if (!RAY_TARGETS.length || stepDist <= 0) return false; // no targets -> be conservative (blocked)
 
     const dir = intendedDir.clone().normalize();
     const side = new THREE.Vector3().crossVectors(dir, UP).normalize();
 
-    // Heights relative to feet (knee, hip, shoulder)
+    // Heights relative to feet (reduced to 3: knee, hip, shoulder)
     const hFeet = origin.y - HEAD_STAND;
     const heights = [hFeet + 0.45, hFeet + 0.95, hFeet + 1.35];
 
-    // Side offsets: center, ± ~radius
+    // Side offsets: center and sides (reduced rays)
     const s = PLAYER_RADIUS * 0.9;
-    const lateral = [0, +s, -s];
-
+    
     // Ray length slightly beyond step to avoid scraping through edges
     const FAR = Math.max(0.25, stepDist + PLAYER_RADIUS * 0.2);
 
+    // Test center rays at all heights
     for (let hi = 0; hi < heights.length; hi++) {
-      for (let li = 0; li < lateral.length; li++) {
-        const start = new THREE.Vector3()
-          .copy(origin)
-          .addScaledVector(side, lateral[li]);
-        start.y = heights[hi];
+      const start = origin.clone();
+      start.y = heights[hi];
 
-        raycaster.set(start, dir);
-        raycaster.far = FAR;
+      raycaster.set(start, dir);
+      raycaster.far = FAR;
 
-        const hits = raycaster.intersectObjects(RAY_TARGETS, true);
-        if (hits.length > 0) {
-          return false; // something in the way at this band/offset
-        }
+      const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+      if (hits.length > 0) {
+        return false; // something in the way at center
       }
     }
+
+    // Test side rays only at middle height for performance
+    const midHeight = hFeet + 0.95;
+    for (const offset of [+s, -s]) {
+      const start = new THREE.Vector3()
+        .copy(origin)
+        .addScaledVector(side, offset);
+      start.y = midHeight;
+
+      raycaster.set(start, dir);
+      raycaster.far = FAR;
+
+      const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+      if (hits.length > 0) {
+        return false; // something in the way at sides
+      }
+    }
+    
     return true; // no hits on any ray -> real opening ahead
   }
 
