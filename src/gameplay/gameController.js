@@ -9,6 +9,7 @@ export class GameController {
     this.hud = new HUD();
     this.lights=lights;
     this.flashlight = lights.flashlight;
+    this.generatorActivated = false; // Track generator state
 
     // Audio system for sound effects
     this.itemPickupSound = new Audio('./assets/ItemPickupSound.mp3');
@@ -16,6 +17,15 @@ export class GameController {
 
     this.flashlightSwitchSound = new Audio('./assets/FlashlightSwitch.mp3');
     this.flashlightSwitchSound.volume = 1; // Set volume to 100%
+    
+    this.generatorSound = new Audio('./assets/GeneratorTurnedOn.mp3');
+    this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
+    
+    this.scaryScreamSound = new Audio('./assets/ScaryScream.mp3');
+    this.scaryScreamSound.volume = 0.7; // Set volume to 70%
+
+    // Initialize lighting to normal state
+    this.setLightingState('normal');
 
     this.setupEventListeners();
   }
@@ -42,6 +52,11 @@ export class GameController {
         this.togglePause();
       }
     });
+
+    // Listen for generator events from other parts of the game
+    window.addEventListener('generator:triggered', () => {
+      this.triggerGenerator();
+    });
   }
 
   // Handle object interactions from main.js
@@ -59,12 +74,64 @@ export class GameController {
 
         //no main lights since the flashlight is picked up
         this.dimSceneLights(true);
+        
+        // Add new objective when flashlight is picked up
+        this.addObjective("Get Power Back Up");
+        
+        // Make generator interactable now that flashlight is obtained
+        this.enableGeneratorInteraction();
+        
+        // Play scary scream 0.5 seconds after pickup
+        setTimeout(() => {
+          this.playScaryScream();
+        }, 500); // 0.5 seconds delay
         break;
 
       case 'AA Battery.001':
         this.hud.onBatteryInteraction();
         // Remove the battery from the scene (picked up)
         this.scene.remove(object);
+        break;
+
+      default:
+        // Handle generator object (only powerpulse1 and only after flashlight is obtained)
+        if (object.name === "powerpulse1") {
+          // Check if player has flashlight first
+          const flashlightState = this.hud.getFlashlightState();
+          if (!flashlightState.hasFlashlight) {
+            console.log('[Generator] Cannot activate generator without flashlight');
+            return; // Exit early if no flashlight
+          }
+          
+          // Only activate if generator hasn't been used before
+          if (!this.generatorActivated) {
+            // Play generator sound immediately (only once)
+            this.playGeneratorSound();
+            
+            // Mark as activated immediately to prevent re-use
+            this.generatorActivated = true;
+            
+            // Remove interactable property so it can't be used again
+            object.userData.interactable = false;
+            
+            // Refresh the interactable cache to remove this object from prompts
+            if (window.refreshInteractableCache) {
+              window.refreshInteractableCache();
+            }
+            
+            // Activate emergency lighting after 7 seconds (without sound)
+            setTimeout(() => {
+              this.setLightingState('emergency'); // Direct lighting change without sound
+              
+              // Mark "Get Power Back Up" objective as completed
+              this.completeObjective("Get Power Back Up");
+              
+              console.log(`[Generator] Emergency lights activated after delay: ${object.name}`);
+            }, 7000); // 7 seconds delay
+            
+            console.log(`[Generator] Generator started, emergency lights will activate in 7 seconds: ${object.name}`);
+          }
+        }
         break;
     }
   }
@@ -108,20 +175,121 @@ export class GameController {
     }
   }
 
-  //lights off when torch picked up
+  // Lighting state management
+  setLightingState(state) {
+    if(!this.lights) return;
+
+    switch(state) {
+      case 'normal':
+        // Normal lighting: ambient and directional lights on, red lights off
+        if(this.lights.hemi) this.lights.hemi.intensity = 0.8;
+        if(this.lights.dirLight) this.lights.dirLight.intensity = 1.2;
+        if(this.lights.redLights) {
+          this.lights.redLights.forEach(light => {
+            light.intensity = 0;
+          });
+        }
+        break;
+        
+      case 'dark':
+        // Dark mode: all lights off (flashlight picked up)
+        if(this.lights.hemi) this.lights.hemi.intensity = 0;
+        if(this.lights.dirLight) this.lights.dirLight.intensity = 0;
+        if(this.lights.redLights) {
+          this.lights.redLights.forEach(light => {
+            light.intensity = 0;
+          });
+        }
+        break;
+        
+      case 'emergency':
+        // Emergency mode: ambient lights dim, red lights on
+        if(this.lights.hemi) this.lights.hemi.intensity = 0.1;
+        if(this.lights.dirLight) this.lights.dirLight.intensity = 0.2;
+        if(this.lights.redLights) {
+          this.lights.redLights.forEach(light => {
+            light.intensity = 4;
+          });
+        }
+        break;
+    }
+  }
+
+  //lights off when torch picked up (keeping old method for backwards compatibility)
   dimSceneLights(dim=true)
   {
-      if(!this.lights) return;
-      const factor=dim?0.2:1;
+    this.setLightingState(dim ? 'dark' : 'normal');
+  }
 
-      if(this.lights.redLights)
-      {
-        this.lights.redLights.forEach(light=>
-        {
-          light.intensity = dim ? 0 : 4;
-        });
+  // Trigger generator and switch to emergency lighting
+  triggerGenerator() {
+    console.log('Generator triggered - switching to emergency lighting');
+    
+    // Play generator sound effect if available
+    const generatorSound = new Audio('./assets/GeneratorTurnedOn.mp3');
+    generatorSound.volume = 0.7;
+    generatorSound.play().catch(() => {
+      console.log('Generator sound failed to play');
+    });
+
+    // Switch to emergency lighting (red lights)
+    this.setLightingState('emergency');
+    
+    // Dispatch event to notify other systems
+    window.dispatchEvent(new CustomEvent('generator:activated'));
+  }
+
+  // Enable generator interaction after flashlight is obtained
+  enableGeneratorInteraction() {
+    console.log('[Generator] Looking for generator to enable...');
+    let generatorFound = false;
+    
+    this.scene.traverse((child) => {
+      if (child.name === "powerpulse1") {
+        console.log(`[Generator] Found powerpulse1 object, potentiallyInteractable: ${child.userData.potentiallyInteractable}, interactable: ${child.userData.interactable}`);
+        
+        // Make it interactable regardless of potentiallyInteractable flag
+        child.userData.interactable = true;
+        generatorFound = true;
+        console.log('[Generator] Generator is now interactable after flashlight pickup');
       }
+    });
+    
+    if (!generatorFound) {
+      console.log('[Generator] WARNING: powerpulse1 object not found in scene!');
+    }
+    
+    // Force refresh the entire cache
+    if (window.updateInteractableCache) {
+      console.log('[Generator] Refreshing interactable cache...');
+      window.updateInteractableCache();
+    } else {
+      console.log('[Generator] WARNING: updateInteractableCache not available!');
+    }
+  }
 
+  // Play generator sound effect
+  playGeneratorSound() {
+    // Reset the sound to beginning in case it's already playing
+    this.generatorSound.currentTime = 0;
+
+    // Play the sound
+    this.generatorSound.play().catch(() => {
+      // Sound failed to play
+      console.log('[Generator] Failed to play generator sound');
+    });
+  }
+
+  // Play scary scream sound effect
+  playScaryScream() {
+    // Reset the sound to beginning in case it's already playing
+    this.scaryScreamSound.currentTime = 0;
+
+    // Play the sound
+    this.scaryScreamSound.play().catch(() => {
+      // Sound failed to play
+      console.log('[ScaryScream] Failed to play scary scream sound');
+    });
   }
 
   // Play pickup sound effect
