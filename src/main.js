@@ -172,7 +172,8 @@ cutscene.play(
 function loadLevelInBackground() {
   
   // Load the level
-  loadLevel("level1", scene);
+ // loadLevel("level1", scene);
+  loadLevel("level2", scene);
   
   // Add lights
   scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
