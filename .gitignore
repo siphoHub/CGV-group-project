@@ -3,3 +3,4 @@ dist
 .DS_Store
 .env
 public/models/*.glb
+!public/models/blenderL2.glb
