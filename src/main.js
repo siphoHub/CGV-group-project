@@ -1,16 +1,47 @@
-//main.js
 import * as THREE from "three";
-import { loadLevel } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
+import {createLighting} from "./lighting/level1.js"
 
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
+    addDoorAtCrosshair();
+  } 
+  
+  // L key for level progression
+  if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
+    progressToLevel2(scene, gameController, camera).then(success => {
+      if (success) {
+        console.log("[Main] Successfully progressed to Level 2");
+      }
+    });
+  }
+});
 
 // --- Renderer ---
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ 
+  antialias: window.devicePixelRatio === 1, // Only enable antialias on low-DPI displays
+  powerPreference: "high-performance",
+  stencil: false,  // Disable stencil buffer if not used
+  depth: true,
+  logarithmicDepthBuffer: false // Disable for better performance
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // Use faster shadow map type
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+
+// Additional performance optimizations
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+// Enable frustum culling optimizations
+renderer.sortObjects = true;
+
 document.body.style.margin = "0";
 document.body.appendChild(renderer.domElement);
 
@@ -23,6 +54,7 @@ scene.fog = new THREE.Fog(0x000000, 8, 30);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
+
 
 // --- Dev helpers (ignored by interaction) ---
 const grid = new THREE.GridHelper(40, 40);
@@ -103,7 +135,9 @@ function addDoorAtCrosshair() {
 
 // Key: press P to stamp a doorway where you’re looking
 addEventListener("keydown", (e) => {
-  if (e.code === "KeyP") addDoorAtCrosshair();
+  if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
+    addDoorAtCrosshair();
+  } 
 });
 
 // --- Music ---
@@ -112,20 +146,20 @@ let backgroundMusic = null;
 
 function startBackgroundMusic() {
   if (!backgroundMusic) {
-    backgroundMusic = new Audio('./assets/scary-horror-music-351315.mp3');
+    backgroundMusic = new Audio('/models/assets/scary-horror-music-351315.mp3');
     backgroundMusic.loop = true;
     backgroundMusic.volume = 0.3; // Set volume to 30% so it's not too loud
-    
+
     // Play with user interaction (modern browsers require this)
     backgroundMusic.play().catch(error => {
-      
+
       // Add a one-time click listener to start music
       const playAudio = () => {
         backgroundMusic.play().catch(err => console.log("Failed to play audio:", err));
         document.removeEventListener('click', playAudio);
       };
       document.addEventListener('click', playAudio);
-    });  
+    });
   }
 }
 
@@ -133,13 +167,33 @@ function stopBackgroundMusic() {
   if (backgroundMusic) {
     backgroundMusic.pause();
     backgroundMusic.currentTime = 0;
-    backgroundMusic = null;
+  }
+}
+
+function fadeBackgroundMusic() {
+  if (backgroundMusic) {
+    const fadeDuration = 2000; // milliseconds
+    const fadeSteps = 20;
+    const stepTime = fadeDuration / fadeSteps;
+    let currentStep = 0;
+    const initialVolume = backgroundMusic.volume;
+
+    const fadeInterval = setInterval(() => {
+      currentStep++;
+      backgroundMusic.volume = initialVolume * (1 - currentStep / fadeSteps);
+      if (currentStep >= fadeSteps) {
+        clearInterval(fadeInterval);
+        backgroundMusic.pause();
+        backgroundMusic.currentTime = 0;
+      }
+    }, stepTime);
   }
 }
 
 function toggleBackgroundMusic() {
   if (backgroundMusic) {
     if (backgroundMusic.paused) {
+      backgroundMusic.volume = 0.3;
       backgroundMusic.play().catch(err => console.log("Failed to resume audio:", err));
       console.log("Background music resumed");
     } else {
@@ -147,6 +201,9 @@ function toggleBackgroundMusic() {
     }
   }
 }
+
+// --- Start Music ---
+startBackgroundMusic();
 
 // --- Cutscene + parallel level load ---
 const cutscene = new OpeningCutscene();
@@ -157,8 +214,11 @@ let readyToInit = false;
 cutscene.play(
   // Callback when cutscene completes
   () => {
+    // Stop cutscene music the moment cutscene finishes/skips
+
     if (levelLoaded) {
-      initializeGame();
+      initializeGame(lights);
+      fadeBackgroundMusic();
     } else {
       readyToInit = true; // Mark that we're ready to initialize when level loads
     }
@@ -169,44 +229,43 @@ cutscene.play(
   }
 );
 
-function loadLevelInBackground() {
-  
+let gameController;
+let lights;
+
+async function loadLevelInBackground() {
+
   // Load the level
- // loadLevel("level1", scene);
-  loadLevel("level2", scene);
-  
+  await loadLevel("level1", scene);
+
+  lights=createLighting(scene,camera);
+  gameController=new GameController(scene,camera,lights, controls);
+
   // Add lights
-  scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
+  //scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
   const spot = new THREE.SpotLight(0xffffff, 1.0, 20, Math.PI / 6, 0.3);
   spot.position.set(4, 6, 4);
   spot.castShadow = true;
   scene.add(spot);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-  dirLight.position.set(5, 10, 5);
-  scene.add(dirLight);
-  
+  //const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+  //dirLight.position.set(5, 10, 5);
+  //scene.add(dirLight);
+
   levelLoaded = true;
   console.log("Level loaded!");
-  
+
   // If cutscene already finished, initialize game now
   if (readyToInit) {
-    initializeGame();
+    initializeGame(lights); //passing lights to the initializeGame function
   }
 }
-// --- Game init (HUD + interaction loop) ---
-let gameController;
+// --- Game init (HUD + interaction loop) --
 let interactionIndicator;
 
-function initializeGame() {
+function initializeGame(lights) {
   // place player at spawn (you can tune this)
   resetPlayer();
 
-  // HUD / gameplay systems
-  gameController = new GameController(scene, camera);
-
-  // music
-  startBackgroundMusic();
   document.addEventListener("keydown", (e) => { if (e.code === "KeyM") toggleBackgroundMusic(); });
 
   // interaction indicator UI
@@ -256,6 +315,42 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
+// Cache interactable objects to avoid scene traversal every frame
+let cachedInteractables = [];
+
+// Make cache globally accessible for GameController
+window.cachedInteractables = cachedInteractables;
+
+function updateInteractableCache() {
+  cachedInteractables = [];
+  scene.traverse((obj) => {
+    if (obj.userData?.interactable) {
+      cachedInteractables.push(obj);
+    }
+  });
+  // Update global reference
+  window.cachedInteractables = cachedInteractables;
+  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`);
+}
+
+// Add function to refresh cache when objects become non-interactable
+function refreshInteractableCache() {
+  cachedInteractables = cachedInteractables.filter(obj => 
+    obj.parent && obj.userData?.interactable
+  );
+}
+
+// Make refresh function globally accessible
+window.refreshInteractableCache = refreshInteractableCache;
+
+// Make update function globally accessible  
+window.updateInteractableCache = updateInteractableCache;
+
+// Update cache when level loads
+window.addEventListener("level:colliders", () => {
+  setTimeout(updateInteractableCache, 100); // Small delay to ensure scene is fully loaded
+});
+
 function checkForInteractables() {
   if (!interactionIndicator || !controls.isLocked) return;
 
@@ -264,23 +359,38 @@ function checkForInteractables() {
   let best = interactionDistance;
   let flashlightTaken = false;
 
-  scene.traverse((obj) => {
-    if (!obj.userData?.interactable) return;
+  // Use cached interactables instead of scene.traverse
+  for (const obj of cachedInteractables) {
+    if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
+    
     const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
 
-    // optional special casing for flashlight aura
+    // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
       obj.userData.aura.material.opacity = d <= interactionDistance ? 0.2 : 0.0;
       if (d <= interactionDistance && !flashlightTaken) { target = obj; best = d; flashlightTaken = true; }
-      return;
+      continue;
     }
 
+    // Handle generators and other interactables (no aura effect for generators)
     if (!flashlightTaken && d <= interactionDistance && d < best) { target = obj; best = d; }
-  });
+  }
 
   if (target) {
     interactionIndicator.style.display = "block";
-    const p = target.getWorldPosition(new THREE.Vector3()); p.y += 0.5;
+    const p = target.getWorldPosition(new THREE.Vector3()); 
+    
+    // Check if target is a generator to customize the prompt
+    const isGenerator = target.name === "powerpulse1";
+    
+    if (isGenerator) {
+      p.y += 0.2; // Lower position for generator
+      interactionIndicator.textContent = "Press E to Turn on";
+    } else {
+      p.y += 0.5; // Higher position for other objects
+      interactionIndicator.textContent = "Press E to interact";
+    }
+    
     const s = worldToScreen(p);
     interactionIndicator.style.left = `${s.x}px`;
     interactionIndicator.style.top = `${s.y}px`;
@@ -299,13 +409,53 @@ addEventListener("resize", () => {
 
 // --- Animate ---
 const clock = new THREE.Clock();
+let frameCount = 0;
+let lastFrameTime = 0;
+let averageFPS = 60;
+
+// Performance debug display (optional)
+let fpsDisplay = null;
+if (window.location.search.includes('debug')) {
+  fpsDisplay = document.createElement('div');
+  fpsDisplay.style.cssText = `
+    position: fixed; top: 10px; right: 10px; 
+    background: rgba(0,0,0,0.7); color: white; 
+    padding: 5px 10px; font-family: monospace; 
+    font-size: 12px; border-radius: 3px; z-index: 9999;
+  `;
+  document.body.appendChild(fpsDisplay);
+}
+
 function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
+  frameCount++;
+  
+  // Performance monitoring
+  const currentTime = performance.now();
+  const frameDelta = currentTime - lastFrameTime;
+  lastFrameTime = currentTime;
+  
+  // Calculate rolling average FPS
+  if (frameDelta > 0) {
+    const instantFPS = 1000 / frameDelta;
+    averageFPS = averageFPS * 0.95 + instantFPS * 0.05; // Smooth average
+  }
+  
+  // Update FPS display every 30 frames
+  if (fpsDisplay && frameCount % 30 === 0) {
+    const meshCount = scene.children.filter(child => child.isMesh).length;
+    fpsDisplay.textContent = `FPS: ${Math.round(averageFPS)} | Meshes: ${meshCount}`;
+  }
 
   update(dt);                                   // drive unified controls
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
-    checkForInteractables();                    // proximity UI
+    
+    // Adaptive performance: reduce interaction check frequency if FPS is low
+    const checkInterval = averageFPS < 30 ? 6 : (averageFPS < 45 ? 4 : 3);
+    if (frameCount % checkInterval === 0) {
+      checkForInteractables();                  // proximity UI
+    }
   }
 
   renderer.render(scene, camera);
