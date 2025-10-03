@@ -3,7 +3,6 @@ export class HUD {
   constructor() {
     // --- Objectives ---
     this.objectives = [
-      { id: 1, text: "Find the Flashlight", completed: false },
     ];
 
     // --- Flashlight smooth % ---
@@ -53,7 +52,7 @@ export class HUD {
         <h4>INVENTORY</h4>
         <div id="inventory-items">
           <div id="flashlight-item" class="inventory-item hidden">
-            <img src="/assets/FlashlightIcon.jpg" 
+            <img src="../public/models/assets/FlashlightIcon.jpg" 
                  alt="Flashlight" class="inventory-icon flashlight-image">
             <span class="inventory-label">Flashlight</span>
           </div>
@@ -122,7 +121,7 @@ export class HUD {
       #objectives-panel.parchment{
         position: absolute; top: 20px; left: 20px;
         width: 360px; height: 240px;              /* keep ratio with your PNG */
-        background: url('/assets/ObjectivesPage.png') center/contain no-repeat; /* use the PNG with transparent edges */
+        background: url('../public/models/assets/ObjectivesPage.png') center/contain no-repeat; /* use the PNG with transparent edges */
         filter: drop-shadow(0 6px 16px rgba(0,0,0,0.35));
         transform: rotate(-1.2deg); transform-origin: top left; /* small diegetic tilt */
       }
