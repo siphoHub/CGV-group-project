@@ -21,8 +21,8 @@ scene.fog = new THREE.Fog(0x000000, 8, 30);
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-5);
-camera.lookAt(0, 1.7, 0);
+//camera.position.set(0,1.7,-5);
+//camera.lookAt(0, 1.7, 0);
 
 // --- Dev helpers (ignored by interaction) ---
 const grid = new THREE.GridHelper(40, 40);
@@ -172,7 +172,8 @@ cutscene.play(
 function loadLevelInBackground() {
   
   // Load the level
-  loadLevel("level1", scene);
+  //loadLevel("level1", scene);
+  loadLevel("level3", scene);
   
   // Add lights
   scene.add(new THREE.HemisphereLight(0x555577, 0x111122, 0.6));
