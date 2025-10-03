@@ -2,13 +2,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-export default function loadLevel1(scene) {
+export default async function loadLevel1(scene) {
   const loader = new GLTFLoader();
 
-  loader.load("/models/blenderLevel1.glb",
-    (gltf) => {
-      const lobby = gltf.scene;
-      lobby.scale.set(1, 1, 1);
+  try {
+    const gltf = await loader.loadAsync("/models/blenderLevel1.glb");
+    const lobby = gltf.scene;
+    lobby.scale.set(1, 1, 1);
 
     
       const box = new THREE.Box3().setFromObject(lobby);
@@ -156,10 +156,10 @@ export default function loadLevel1(scene) {
       }));
 
       console.log("[level1] GLB loaded | colliders:", colliders.length, "passthrough:", passthrough.length);
-    },
-    undefined,
-    (error) => console.error("Error loading GLB:", error)
-  );
+      
+  } catch (error) {
+    console.error("Error loading GLB:", error);
+  }
 }
 
 function growBox(b, { x = 0, y = 0, z = 0 }) {

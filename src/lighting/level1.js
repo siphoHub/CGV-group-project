@@ -28,9 +28,11 @@ const flashlight=new THREE.SpotLight(
     );
 flashlight.visible=false;
 flashlight.position.set(0, 0, 0); // adjust to your desired position
+flashlight.userData.isPersistent = true; // Mark as persistent for level transitions
 scene.add(flashlight);
 
 const flashLightTarget=new THREE.Object3D();
+flashLightTarget.userData.isPersistent = true; // Mark target as persistent too
 scene.add(flashLightTarget);
 flashlight.target=flashLightTarget;
 

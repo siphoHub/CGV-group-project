@@ -1,24 +1,47 @@
-//main.js
 import * as THREE from "three";
-import { loadLevel } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
+    addDoorAtCrosshair();
+  } 
+  
+  // L key for level progression
+  if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
+    progressToLevel2(scene, gameController, camera).then(success => {
+      if (success) {
+        console.log("[Main] Successfully progressed to Level 2");
+      }
+    });
+  }
+});
 
 // --- Renderer ---
 const renderer = new THREE.WebGLRenderer({ 
-  antialias: true,
+  antialias: window.devicePixelRatio === 1, // Only enable antialias on low-DPI displays
   powerPreference: "high-performance",
   stencil: false,  // Disable stencil buffer if not used
-  depth: true
+  depth: true,
+  logarithmicDepthBuffer: false // Disable for better performance
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap; // Use faster shadow map type
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+
+// Additional performance optimizations
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+// Enable frustum culling optimizations
+renderer.sortObjects = true;
+
 document.body.style.margin = "0";
 document.body.appendChild(renderer.domElement);
 
@@ -209,10 +232,10 @@ cutscene.play(
 let gameController;
 let lights;
 
-function loadLevelInBackground() {
+async function loadLevelInBackground() {
 
   // Load the level
-  loadLevel("level1", scene);
+  await loadLevel("level1", scene);
 
   lights=createLighting(scene,camera);
   gameController=new GameController(scene,camera,lights, controls);
@@ -387,16 +410,50 @@ addEventListener("resize", () => {
 // --- Animate ---
 const clock = new THREE.Clock();
 let frameCount = 0;
+let lastFrameTime = 0;
+let averageFPS = 60;
+
+// Performance debug display (optional)
+let fpsDisplay = null;
+if (window.location.search.includes('debug')) {
+  fpsDisplay = document.createElement('div');
+  fpsDisplay.style.cssText = `
+    position: fixed; top: 10px; right: 10px; 
+    background: rgba(0,0,0,0.7); color: white; 
+    padding: 5px 10px; font-family: monospace; 
+    font-size: 12px; border-radius: 3px; z-index: 9999;
+  `;
+  document.body.appendChild(fpsDisplay);
+}
+
 function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
   frameCount++;
+  
+  // Performance monitoring
+  const currentTime = performance.now();
+  const frameDelta = currentTime - lastFrameTime;
+  lastFrameTime = currentTime;
+  
+  // Calculate rolling average FPS
+  if (frameDelta > 0) {
+    const instantFPS = 1000 / frameDelta;
+    averageFPS = averageFPS * 0.95 + instantFPS * 0.05; // Smooth average
+  }
+  
+  // Update FPS display every 30 frames
+  if (fpsDisplay && frameCount % 30 === 0) {
+    const meshCount = scene.children.filter(child => child.isMesh).length;
+    fpsDisplay.textContent = `FPS: ${Math.round(averageFPS)} | Meshes: ${meshCount}`;
+  }
 
   update(dt);                                   // drive unified controls
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
     
-    // Only check for interactables every 3 frames to reduce performance impact
-    if (frameCount % 3 === 0) {
+    // Adaptive performance: reduce interaction check frequency if FPS is low
+    const checkInterval = averageFPS < 30 ? 6 : (averageFPS < 45 ? 4 : 3);
+    if (frameCount % checkInterval === 0) {
       checkForInteractables();                  // proximity UI
     }
   }
