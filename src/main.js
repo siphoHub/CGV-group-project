@@ -315,6 +315,17 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
+// -------- NEW: robust requiredKey lookup up the parent chain --------
+function getRequiredKeyFrom(obj) {
+  let p = obj;
+  while (p) {
+    const k = p.userData && p.userData.requiredKey;
+    if (k === "T" || k === "E") return k;
+    p = p.parent;
+  }
+  return "E";
+}
+
 // Cache interactable objects to avoid scene traversal every frame
 let cachedInteractables = [];
 
@@ -382,13 +393,24 @@ function checkForInteractables() {
     
     // Check if target is a generator to customize the prompt
     const isGenerator = target.name === "powerpulse1";
-    
+
+    // Compute once (fix duplicate const)
+    const requiredKey = getRequiredKeyFrom(target); // "E" or "T"
+
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
       interactionIndicator.textContent = "Press E to Turn on";
     } else {
       p.y += 0.5; // Higher position for other objects
-      interactionIndicator.textContent = "Press E to interact";
+
+      // Identify doors and show exact key they need
+      const isDoor =
+        (target.userData && target.userData.isDoor) ||
+        (target.name && target.name.toLowerCase().includes("door"));
+
+      interactionIndicator.textContent = isDoor
+        ? `Press ${requiredKey} to open the door`
+        : `Press ${requiredKey} to interact`;
     }
     
     const s = worldToScreen(p);
