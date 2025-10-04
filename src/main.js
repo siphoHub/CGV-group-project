@@ -394,27 +394,23 @@ function checkForInteractables() {
     // Check if target is a generator to customize the prompt
     const isGenerator = target.name === "powerpulse1";
 
-    // NEW: pull correct key (walk up parents); default E
-    const requiredKey = getRequiredKeyFrom(target);
+    // Compute once (fix duplicate const)
+    const requiredKey = getRequiredKeyFrom(target); // "E" or "T"
 
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
       interactionIndicator.textContent = "Press E to Turn on";
     } else {
-       p.y += 0.5; // Higher position for other objects
+      p.y += 0.5; // Higher position for other objects
 
-  // Identify doors and show the exact key they need (E or T)
-  const isDoor =
-    (target.userData && target.userData.isDoor) ||
-    (target.name && target.name.toLowerCase().includes("door"));
+      // Identify doors and show exact key they need
+      const isDoor =
+        (target.userData && target.userData.isDoor) ||
+        (target.name && target.name.toLowerCase().includes("door"));
 
-  const requiredKey = getRequiredKeyFrom(target); // "E" or "T"
-
-  if (isDoor) {
-    interactionIndicator.textContent = `Press ${requiredKey} to open the door`;
-  } else {
-    interactionIndicator.textContent = `Press ${requiredKey} to interact`;
-  }
+      interactionIndicator.textContent = isDoor
+        ? `Press ${requiredKey} to open the door`
+        : `Press ${requiredKey} to interact`;
     }
     
     const s = worldToScreen(p);
