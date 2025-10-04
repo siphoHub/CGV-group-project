@@ -1,12 +1,12 @@
-// src/gameplay/Doors.js
+//   src/gameplay/Doors.js
 import * as THREE from "three";
 
-const DEBUG = false; // set to true temporarily if you want a few frames of logs
+const DEBUG = false; 
 
 export class DoorManager {
   /**
    * @param {THREE.Scene} scene
-   * @param {() => THREE.Vector3} getPlayerPos - returns current player world position
+   * @param {() => THREE.Vector3} getPlayerPos 
    * @param {{onOpenBoxAdd?: (name:string, box:THREE.Box3)=>void, onOpenBoxRemove?: (name:string, box:THREE.Box3)=>void}} hooks
    * @param {Array<{name:string, openAxis?:'x'|'y'|'z', openAngleDeg?:number, triggerRadius?:number, speed?:number, doorWidth?:number, doorHeight?:number, doorDepth?:number}>} doorConfigs
    */
@@ -16,16 +16,16 @@ export class DoorManager {
     this.onOpenBoxAdd = hooks.onOpenBoxAdd || (() => {});
     this.onOpenBoxRemove = hooks.onOpenBoxRemove || (() => {});
     this.doors = [];
-    this._debugFrames = 120; // ~2 seconds of light logs when DEBUG
+    this._debugFrames = 120; 
 
     const findDoorNode = (root, wantName) => {
       if (!wantName) return null;
 
-      // 1) exact
+      
       let n = root.getObjectByName(wantName);
       if (n) return n;
 
-      // 2) case-insensitive exact
+     
       const wantLC = wantName.toLowerCase();
       let best = null;
       root.traverse(o => {
@@ -34,7 +34,6 @@ export class DoorManager {
       });
       if (best) return best;
 
-      // 3) case-insensitive contains
       root.traverse(o => {
         if (!o.name) return;
         if (o.name.toLowerCase().includes(wantLC)) best = best || o;
@@ -52,7 +51,7 @@ export class DoorManager {
 
       node.updateWorldMatrix(true, false);
 
-      // Rotation (swing) setup
+     
       const axisName = (cfg.openAxis || "y").toLowerCase();
       const axis = new THREE.Vector3(
         axisName === "x" ? 1 : 0,
@@ -65,7 +64,7 @@ export class DoorManager {
         new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(cfg.openAngleDeg ?? 100))
       );
 
-      // Build a world-space doorway AABB from current bounds (robust even if pivot is off)
+    
       const worldBox = new THREE.Box3().setFromObject(node);
       const center   = worldBox.getCenter(new THREE.Vector3());
       const size     = worldBox.getSize(new THREE.Vector3());
@@ -84,8 +83,8 @@ export class DoorManager {
         node,
         startQuat,
         endQuat,
-        t: 0,                                   // 0=closed → 1=open
-        speed: cfg.speed ?? 2.0,                // seconds to open/close
+        t: 0,                                   
+        speed: cfg.speed ?? 2.0,              
         triggerRadius: cfg.triggerRadius ?? 3.0,
         locked: !!node.userData.locked,
         addedPassBox: false,
@@ -106,25 +105,25 @@ export class DoorManager {
     const player = this.getPlayerPos();
 
     for (const d of this.doors) {
-      // Measure proximity to the *current* bounding-box center (not pivot)
+      
       const liveBox = new THREE.Box3().setFromObject(d.node);
       liveBox.getCenter(d.tmp);
       const dist = d.tmp.distanceTo(player);
 
       const shouldOpen = dist <= d.triggerRadius && !d.locked;
 
-      // Move t toward target (0/1) at the configured speed
+      
       const target = shouldOpen ? 1 : 0;
       if (d.t !== target) {
         const step = dt / Math.max(0.0001, d.speed);
         d.t = THREE.MathUtils.clamp(d.t + Math.sign(target - d.t) * step, 0, 1);
       }
 
-      // Smoothstep easing and slerp rotation
+      
       const s = d.t * d.t * (3 - 2 * d.t);
       THREE.Quaternion.slerp(d.startQuat, d.endQuat, d.node.quaternion, s);
 
-      // Dynamic passthrough: add when partly open, remove when almost closed
+      
       if (s >= 0.25 && !d.addedPassBox) {
         this.onOpenBoxAdd(d.node.name, d.passBox);
         d.addedPassBox = true;
