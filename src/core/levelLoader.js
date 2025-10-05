@@ -97,7 +97,7 @@ export async function progressToLevel2(scene, gameController, camera) {
     // Reset player position for level 2
     if (camera) {
       camera.position.set(0, 1.7, -5);
-      camera.lookAt(0, 1.7, 0);
+      camera.lookAt(0, 1.7, -10);
       console.log("[LevelLoader] Player position reset for Level 2");
     }
     
@@ -109,10 +109,15 @@ export async function progressToLevel2(scene, gameController, camera) {
       console.log("[LevelLoader] Flashlight functionality preserved for Level 2");
     }
     
-    // Update objectives
+    // Update objectives for level 2
     if (gameController) {
-      gameController.addObjective("Explore the new facility");
-      gameController.addObjective("Use flashlight to navigate the dark facility");
+      // Initialize level 2 specific objectives
+      if (typeof gameController.initializeLevel2Objectives === 'function') {
+        gameController.initializeLevel2Objectives();
+      } else {
+        // Fallback if method doesn't exist
+        gameController.addObjective("Find clue to open office door");
+      }
     }
     
     // Update collision detection for new level
