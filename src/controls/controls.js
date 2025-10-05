@@ -3,7 +3,6 @@ import * as THREE from 'three';
 
 export function createControls(camera, domElement) {
   const controls = new PointerLockControls(camera, domElement);
-
   domElement.addEventListener('click', () => controls.lock());
   controls.addEventListener('lock',   () => console.log('[controls] LOCKED'));
   controls.addEventListener('unlock', () => console.log('[controls] UNLOCKED'));
@@ -179,7 +178,7 @@ export function createControls(camera, domElement) {
     if (keys.get('KeyA') || keys.get('ArrowLeft'))  right   -= 1;
 
     const sprinting = keys.get('ShiftLeft')   || keys.get('ShiftRight');
-    const crouching = keys.get('ControlLeft') || keys.get('ControlRight');
+    const crouching = keys.get('KeyC');
     const speed = crouching ? SPEED_CROUCH : (sprinting ? SPEED_SPRINT : SPEED_WALK);
 
     // Footstep cadence
@@ -202,6 +201,7 @@ export function createControls(camera, domElement) {
         .addScaledVector(tmpFwd,  forward * dist)
         .addScaledVector(tmpRight, right   * dist);
 
+      // Collision detection enabled
       if (COLLIDERS.length === 0 && PASSTHROUGH.length === 0) {
         base.copy(tmpNext);
       } else if (!positionLooksBlocked(tmpNext)) {
