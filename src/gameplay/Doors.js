@@ -121,7 +121,7 @@ export class DoorManager {
 
       
       const s = d.t * d.t * (3 - 2 * d.t);
-      THREE.Quaternion.slerp(d.startQuat, d.endQuat, d.node.quaternion, s);
+      d.node.quaternion.slerpQuaternions(d.startQuat, d.endQuat, s);
 
       
       if (s >= 0.25 && !d.addedPassBox) {

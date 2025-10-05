@@ -50,6 +50,20 @@ export default async function loadLevel1(scene) {
             console.log(`[Generator] Found powerpulse1 generator object - interactable from start`);
           }
           
+          // Mark objects containing "Log" as interactable
+          if (child.name && child.name.toLowerCase().includes('log')) {
+            child.userData.interactable = true;
+            console.log(`[Level1] Marked Log object as interactable: ${child.name}`);
+          }
+          
+          // Mark Mesh_0001 as elevator (only interactable after flashlight obtained)
+          if (child.name === 'Mesh_0001') {
+            child.userData.interactable = false; // Start as non-interactable
+            child.userData.interactionType = 'elevator';
+            child.userData.requiresFlashlight = true;
+            console.log(`[Level1] Marked Mesh_0001 as elevator (requires flashlight)`);
+          }
+          
           // Move flashlight parts to reception desk location
           if (child.name.includes("Flash_Light")) {
               child.position.set(0.1, -0.4, 0); // Reception desk position (adjust as needed)

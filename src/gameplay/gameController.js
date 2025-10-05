@@ -11,11 +11,14 @@ export class GameController {
     this.flashlight = lights.flashlight;
     this.controls = controls;
     this.generatorActivated = false; // Track generator state
+    this.powerTurnedOn = false; // Track power state for progressive objectives
+    this.flashlightPickedUp = false; // Track flashlight pickup for progressive objectives
 
-    // remember last interacted T-door so you can close it even if not "nearest"
-    this._lastDoorT = null;
-
-    this.addObjective("Turn on Power");
+    // Initialize with first objective only
+    this.initializeProgressiveObjectives();
+    
+    // Make sure generator is interactable from start
+    this.ensureGeneratorInteractable();
 
     // Audio system for sound effects
     this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
@@ -124,14 +127,24 @@ export class GameController {
       case 'Flash_Light_Body_high':
       case 'Flash_Light_Cover_high':
       case 'Flash_Light_Metal_high':
-        this.playPickupSound();
+        // Only allow pickup if power has been turned on
+        if (!this.powerTurnedOn) {
+          this.hud.showMessage('The flashlight seems to need power first...', 2000);
+          return;
+        }
+        
+        this.playPickupSound(); // Play sound effect
         this.hud.onFlashlightInteraction();
         this.removeFlashlightParts();
         this.dimSceneLights(true);
+        
+        // Complete flashlight objective and show next objective
+        this.onFlashlightPickedUp();
+        
+        // Play scary scream 0.5 seconds after pickup
         setTimeout(() => {
           this.playScaryScream();
-          this.completeObjective("Find a Flashlight");
-        }, 500);
+        }, 500); // 0.5 seconds delay
         break;
 
       case 'AA Battery.001':
@@ -140,18 +153,8 @@ export class GameController {
         break;
 
       default:
-        // Doors via E: only allow if door requires E; show hint if door requires T
-        if (object.userData?.toggleDoor && object.userData?.isDoor) {
-          const req = object.userData.requiredKey || "E";
-          if (req === "E") {
-            try { object.userData.toggleDoor(); } catch (e) { console.warn('[Door-E] toggleDoor error:', e); }
-          } else if (req === "T") {
-            this.hud?.showMessage?.("Press T to interact", 1200);
-            // remember it so KeyT can still close it even if not "nearest" later
-            this._lastDoorT = object;
-          }
-          break;
-        }
+        // Handle generator object (only powerpulse1)
+        if (object.name === "powerpulse1") {
 
         // Generator
         if (object.name === "powerpulse1") {
@@ -159,14 +162,23 @@ export class GameController {
             this.playGeneratorSound();
             this.generatorActivated = true;
             object.userData.interactable = false;
-            if (window.refreshInteractableCache) window.refreshInteractableCache();
-            this.enableFlashLightInteraction();
+            
+            // Refresh the interactable cache to remove this object from prompts
+            if (window.refreshInteractableCache) {
+              window.refreshInteractableCache();
+            }
+            
+            // Activate emergency lighting after 3 seconds
             setTimeout(() => {
-              this.setLightingState('emergency');
-              this.completeObjective("Turn on power");
-              this.addObjective("Find a Flashlight");
-            }, 3000);
-            console.log(`[Generator] Generator started, emergency lights in 3s: ${object.name}`);
+              this.setLightingState('emergency'); // Switch to red lights
+              
+              // Complete power objective and show next objective
+              this.onPowerTurnedOn();
+              
+              console.log(`[Generator] Emergency lights activated after delay: ${object.name}`);
+            }, 3000); // 3 seconds delay
+            
+            console.log(`[Generator] Generator started, emergency lights will activate in 3 seconds: ${object.name}`);
           }
         }
         break;
@@ -229,7 +241,23 @@ export class GameController {
     }
   }
 
-  dimSceneLights(dim=true){ this.setLightingState(dim ? 'dark' : 'normal'); }
+  // Getter for flashlight state
+  get hasFlashlight() {
+    const flashlightState = this.hud.getFlashlightState();
+    return flashlightState.hasFlashlight;
+  }
+
+  // Give keycard to player via HUD inventory system
+  giveKeycard() {
+    this.hud.foundKeycard();
+    console.log('[GameController] Keycard added to HUD inventory');
+  }
+
+  //lights off when torch picked up (keeping old method for backwards compatibility)
+  dimSceneLights(dim=true)
+  {
+    this.setLightingState(dim ? 'dark' : 'normal');
+  }
 
   triggerGenerator() {
     console.log('Generator triggered - switching to emergency lighting');
@@ -306,6 +334,32 @@ export class GameController {
   getBatteryState() { return this.hud.getBatteryState(); }
   restoreBatteryLife(amount) { this.hud.restoreBatteryLife(amount); }
 
+  // Battery management methods
+  setBatteryDrainTime(seconds) {
+    this.hud.setBatteryDrainTime(seconds);
+  }
+
+  getBatteryState() {
+    return this.hud.getBatteryState();
+  }
+
+  restoreBatteryLife(amount) {
+    this.hud.restoreBatteryLife(amount);
+  }
+
+  // Activate elevator when flashlight is obtained
+  activateElevator() {
+    // Find the elevator object in the scene
+    this.scene.traverse((child) => {
+      if (child.name === 'Mesh_0001' && child.userData.interactionType === 'elevator') {
+        // Mark as interactable now that flashlight is obtained
+        child.userData.interactable = true;
+        console.log('Elevator activated - flashlight obtained!');
+      }
+    });
+  }
+
+  // Remove all flashlight parts when one is picked up
   removeFlashlightParts() {
     const flashlightParts = ['Flash_Light_Body_high', 'Flash_Light_Cover_high', 'Flash_Light_Metal_high'];
     const objectsToRemove = [];
@@ -322,6 +376,130 @@ export class GameController {
     if (interactionIndicator) interactionIndicator.style.display = 'none';
   }
 
-  togglePause() { return this.hud.togglePause(); }
-  isPaused() { return this.hud.getPauseState(); }
+  // Get pause state
+  isPaused() {
+    return this.hud.getPauseState();
+  }
+
+  // Initialize progressive objectives - start with only the first one
+  initializeProgressiveObjectives() {
+    // Set only the first objective as visible, others hidden initially
+    this.hud.objectives = [
+      { id: 1, text: "Turn on the power", completed: false }
+    ];
+    this.hud.updateObjectivesDisplay();
+    
+    console.log('[Objectives] Initialized with first objective: Turn on the power');
+  }
+
+  // Initialize level 2 specific objectives
+  initializeLevel2Objectives() {
+    // Clear any existing objectives and set level 2 objectives
+    this.hud.objectives = [
+      { id: 1, text: "Find a clue to open office door", completed: false }
+    ];
+    this.hud.updateObjectivesDisplay();
+
+    console.log('[Level2 Objectives] Initialized with first objective: Find a clue to open office door');
+  }
+
+  // Called when power is turned on (red lights appear)
+  onPowerTurnedOn() {
+    this.powerTurnedOn = true;
+    
+    // Complete "Turn on power" objective
+    this.completeObjective(1);
+    
+    // Add next objective
+    this.hud.objectives.push({ id: 2, text: "Find the Flashlight", completed: false });
+    this.hud.updateObjectivesDisplay();
+    
+    // Make flashlight interactable now that power is on
+    this.enableFlashLightInteraction();
+    
+    console.log('[Objectives] Power turned on - added flashlight objective');
+  }
+
+  // Called when flashlight is picked up
+  onFlashlightPickedUp() {
+    this.flashlightPickedUp = true;
+    
+    // Complete "Find the Flashlight" objective
+    this.completeObjective(2);
+    
+    // Add final objective
+    this.hud.objectives.push({ id: 3, text: "Enter the elevator", completed: false });
+    this.hud.updateObjectivesDisplay();
+    
+    // Activate elevator so player can go to next level
+    this.activateElevator();
+    
+    console.log('[Objectives] Flashlight picked up - added elevator objective');
+  }
+
+  // Level 2 progression: Called when email is viewed
+  onEmailViewed() {
+    // Complete "Find Keycard" objective and add office code objective
+    this.completeObjective(1);
+    
+    // Add next objective
+    this.hud.objectives.push({ id: 2, text: "Figure out the office code", completed: false });
+    this.hud.updateObjectivesDisplay();
+    
+    console.log('[Level2] Email viewed - added office code objective');
+  }
+
+  // Level 2 progression: Called when office code is entered successfully
+  onOfficeCodeEntered() {
+    // Complete "Figure out the office code" objective
+    this.completeObjective(2);
+    
+    // Add safebox objective
+    this.hud.objectives.push({ id: 3, text: "Find a way to open the safebox", completed: false });
+    this.hud.updateObjectivesDisplay();
+    
+    console.log('[Level2] Office code entered - added safebox objective');
+  }
+
+  // Level 2 progression: Called when safebox code is entered successfully
+  onSafeboxCodeEntered() {
+    // Complete "Find a way to open the safebox" objective
+    this.completeObjective(3);
+    
+    // Add final objective
+    this.hud.objectives.push({ id: 4, text: "Open the Main door", completed: false });
+    this.hud.updateObjectivesDisplay();
+    
+    console.log('[Level2] Safebox opened - added main door objective');
+  }
+
+  // Level 2 progression: Called when main door is opened
+  onMainDoorOpened() {
+    // Complete final objective
+    this.completeObjective(4);
+    
+    console.log('[Level2] Main door opened - all objectives complete!');
+  }
+
+  // Level 2 progression: Called when office door is unlocked with E key
+  onOfficeDoorUnlocked() {
+    // Complete the office door objective if it exists
+    this.completeObjective(1);
+    console.log('[Level2] Office door unlocked - objective completed!');
+  }
+
+  // Level 2 progression: Called when office door 2 is unlocked via keycode
+  onOfficeDoor2Unlocked() {
+    console.log('[Level2] Office door 2 unlocked via keycode - can now be controlled with E key');
+  }
+
+  // Ensure generator is interactable from the start
+  ensureGeneratorInteractable() {
+    this.scene.traverse((child) => {
+      if (child.name === "powerpulse1") {
+        child.userData.interactable = true;
+        console.log('[Generator] Made generator interactable from start');
+      }
+    });
+  }
 }
