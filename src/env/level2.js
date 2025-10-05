@@ -58,9 +58,51 @@ export default async function loadLevel2(scene) {
         }
 
         // Mark interactable objects
-        if (child.name && child.name.toLowerCase().includes('door')) {
+        if (child.name && (child.name.toLowerCase().includes('door') || child.name.toLowerCase().includes('log'))) {
           child.userData.interactable = true;
           console.log(`[Level2] Marked as interactable: ${child.name}`);
+        }
+        
+        // Mark Object_7 as special keycode terminal
+        if (child.name === 'Object_7') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'keycode';
+          console.log(`[Level2] Marked Object_7 as keycode terminal`);
+        }
+        
+        // Mark defaultMaterial001_1 as computer terminal
+        if (child.name === 'defaultMaterial001_1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'computer';
+          console.log(`[Level2] Marked defaultMaterial001_1 as computer terminal`);
+        }
+        
+        // Mark office2_Log1 as handwritten note
+        if (child.name === 'office2_Log1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'note';
+          console.log(`[Level2] Marked office2_Log1 as handwritten note`);
+        }
+        
+        // Mark Cube014_1 as safe box
+        if (child.name === 'Cube014_1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'safebox';
+          console.log(`[Level2] Marked Cube014_1 as safe box`);
+        }
+        
+        // Mark doors as interactable
+        // Mark doors as interactable
+        if (child.name === 'testingRoom1_Door' || child.name === 'officeDoor1' || child.name === 'officeDoor2' || child.name === 'J_2b17002') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'door';
+          console.log(`[Level2] Marked ${child.name} as door`);
+        }
+        
+        // Mark keycard reader as interactable (conditionally)
+        if (child.name === 'Cube003_keyPad_0') {
+          child.userData.interactionType = 'keycard-reader';
+          console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
       }
     });
@@ -73,6 +115,11 @@ export default async function loadLevel2(scene) {
     // Dispatch collision event
     window.dispatchEvent(new CustomEvent("level:colliders", {
       detail: { colliders, passthrough: [], rayTargets }
+    }));
+
+    // Dispatch level loaded event
+    window.dispatchEvent(new CustomEvent("level:loaded", {
+      detail: { levelName: "level2" }
     }));
 
     console.log(`[Level2] GLB loaded | Meshes: ${meshCount} | Optimized: ${optimizedCount} | Colliders: ${colliders.length}`);
