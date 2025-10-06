@@ -236,7 +236,26 @@ function initializeGame() {
         if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
       }
     });
+
+    // 🔽 center-screen raycast fallback up to ~3m (additive; does not remove your behavior)
+    if (!nearest) {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+      ray.far = 3.0;
+      const hits = ray.intersectObjects(scene.children, true);
+      for (const h of hits) {
+        let cur = h.object;
+        while (cur) {
+          if (cur.userData?.interactable) { nearest = cur; break; }
+          cur = cur.parent;
+        }
+        if (nearest) break;
+      }
+    }
+
     if (nearest) gameController.handleInteraction(nearest);
+    // ensure object-local onInteract is called (non-breaking fallback)
+    if (nearest) nearest.userData?.onInteract?.();
   });
 }
 
@@ -278,6 +297,22 @@ function checkForInteractables() {
     if (!flashlightTaken && d <= interactionDistance && d < best) { target = obj; best = d; }
   });
 
+  // 🔽 ADDITIVE: fallback — if no proximity target, use center-screen raycast (up to ~3m)
+  if (!target) {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+    ray.far = 3.0;
+    const hits = ray.intersectObjects(scene.children, true);
+    for (const h of hits) {
+      let cur = h.object;
+      while (cur) {
+        if (cur.userData?.interactable) { target = cur; break; }
+        cur = cur.parent;
+      }
+      if (target) break;
+    }
+  }
+
   if (target) {
     interactionIndicator.style.display = "block";
     const p = target.getWorldPosition(new THREE.Vector3()); p.y += 0.5;
@@ -303,6 +338,10 @@ function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
 
   update(dt);                                   // drive unified controls
+
+  // non-breaking: allow level-local animations (e.g., doors) to tick when provided
+  if (scene.userData?.levelTick) scene.userData.levelTick(dt);
+
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
     checkForInteractables();                    // proximity UI
