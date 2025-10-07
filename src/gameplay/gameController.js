@@ -153,9 +153,6 @@ export class GameController {
         break;
 
       default:
-        // Handle generator object (only powerpulse1)
-        if (object.name === "powerpulse1") {
-
         // Generator
         if (object.name === "powerpulse1") {
           if (!this.generatorActivated) {
@@ -330,10 +327,6 @@ export class GameController {
       this.hud.completeObjective(identifier);
     }
   }
-  setBatteryDrainTime(seconds) { this.hud.setBatteryDrainTime(seconds); }
-  getBatteryState() { return this.hud.getBatteryState(); }
-  restoreBatteryLife(amount) { this.hud.restoreBatteryLife(amount); }
-
   // Battery management methods
   setBatteryDrainTime(seconds) {
     this.hud.setBatteryDrainTime(seconds);
