@@ -263,12 +263,7 @@ let gameController;
 let lights;
 
 async function loadLevelInBackground() {
-
-  // Load the level
-  //loadLevel("level1", scene);
-  loadLevel("level3", scene);
-  
-  await loadLevel("level1", scene);
+  await loadLevel("level3", scene);
 
   lights=createLighting(scene,camera);
   gameController=new GameController(scene,camera,lights, controls);
@@ -757,7 +752,7 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(0, 1.7, -5);
+  camera.position.set(-10, 1.7, -5);   // <- your gameplay spawn
   camera.lookAt(0, 1.7, 0);
   console.log('[reset] Player position reset');
 }

@@ -81,6 +81,186 @@ class SimpleRotatingDoor {
   }
 }
 
+
+// *** Add/remove names here later; we resolve them loosely (case/spacing/dots don't matter).
+const PASSABLE_DOOR_NAMES = [
+  "door1.001",
+  "Green Metal Door.001",
+  "doorBlue",
+  "Green Metal Door",
+];
+
+// *** Makes the given nodes passable
+function makeDoorsPassable(root, names, colliders) {
+  const passthrough = [];
+  const toRemove = [];
+
+  const tmpBox = new THREE.Box3();
+
+  for (const nm of names) {
+    const node = getNodeByLooseName(root, nm);
+    if (!node) {
+      console.warn("[level3] passable door not found:", nm);
+      continue;
+    }
+
+    // Build a generous box around the door to allow walking through
+    const b = new THREE.Box3().setFromObject(node);
+    if (!isFinite(b.min.x)) continue;
+
+    // Slightly inflate to be safe (walk-through feels better)
+    const size = new THREE.Vector3();
+    b.getSize(size);
+    const inflate = new THREE.Vector3(
+      Math.max(0.2, size.x * 0.15),
+      Math.max(0.2, size.y * 0.10),
+      Math.max(0.4, size.z * 0.70) // depth gets the biggest bump
+    );
+    b.expandByVector(inflate);
+
+    passthrough.push(b);
+    toRemove.push(b);
+
+    console.log(`[level3] made passable: "${nm}" (resolved "${node.name}")`);
+  }
+
+  // Strip any collider boxes that intersect our passthrough zones
+  const filtered = colliders.filter(c => {
+    for (const r of toRemove) {
+      // quick reject
+      tmpBox.copy(c);
+      if (tmpBox.intersectsBox(r)) return false;
+    }
+    return true;
+  });
+
+  return { passthrough, colliders: filtered };
+}
+
+// --- HINGE HELPERS (drop-in) -----------------------------------------------
+
+// Wrap a node in a pivot placed at its hinge edge and keep the door visually unchanged.
+function wrapWithHingePivot(node, side = 'left') {
+  // 1) make sure world matrices are current
+  node.updateWorldMatrix(true, false);
+
+  // 2) compute world AABB of the door
+  const box = new THREE.Box3().setFromObject(node);
+  if (!isFinite(box.min.x)) {
+    console.warn("[level3] couldn't make hinge pivot: invalid bounds for", node.name);
+    return null;
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const min = box.min, max = box.max;
+
+  // Choose hinge along the "X edge" of the door's world AABB.
+  // If your doors are modeled on Z, swap to min.z/max.z. (Most doors are wider in X.)
+  const hingeWorld = new THREE.Vector3(
+    side === 'right' ? max.x : min.x,
+    center.y,
+    center.z
+  );
+
+  const parent = node.parent;
+  if (!parent) return null;
+
+  // 3) create pivot at hingeWorld under the same parent as the node
+  const pivot = new THREE.Object3D();
+  parent.add(pivot);
+
+  // 4) position pivot in the parent's local space
+  const parentInv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+  const hingeLocal = hingeWorld.clone().applyMatrix4(parentInv);
+  pivot.position.copy(hingeLocal);
+  pivot.updateWorldMatrix(true, false);
+
+  // 5) reparent node under pivot without moving it visually
+  const nodeWorld = node.matrixWorld.clone();
+  parent.remove(node);
+  pivot.add(node);
+  node.matrix.copy(new THREE.Matrix4().multiplyMatrices(pivot.matrixWorld.clone().invert(), nodeWorld));
+  node.matrix.decompose(node.position, node.quaternion, node.scale);
+  node.updateWorldMatrix(true, false);
+
+  // mark as interactable (so your main shows E prompt etc.)
+  node.userData.interactable = true;
+
+  return pivot;
+}
+
+// A hinged door that rotates the pivot (not the mesh center)
+class HingedDoor {
+  constructor(node, { side = 'left', openAngleDeg = 100, speed = 6.0 } = {}) {
+    this.mesh = node;
+    this.pivot = wrapWithHingePivot(node, side);
+    if (!this.pivot) throw new Error("Failed to create hinge pivot for " + node.name);
+
+    this.openAngle = THREE.MathUtils.degToRad(openAngleDeg);
+    this.speed = speed;
+    this.current = 0;
+    this.target = 0;
+
+    // hook up interaction
+    this.mesh.userData.onInteract = () => this.toggle();
+    this.mesh.userData.getInteractLabel = () => "Press E to open/close";
+    this.mesh.userData.isDoor = true;
+    this.mesh.userData.toggleDoor = () => this.toggle(); // for your GameController fallback
+    this.mesh.userData.requiredKey = "E";
+  }
+  open(){ this.target = this.openAngle; }
+  close(){ this.target = 0; }
+  toggle(){ this.target = (Math.abs(this.target) > 1e-3) ? 0 : this.openAngle; }
+  update(dt){
+    const next = THREE.MathUtils.damp(this.current, this.target, this.speed, dt);
+    const delta = next - this.current;
+    this.current = next;
+    // rotate around local Y of the pivot (typical door hinge axis)
+    this.pivot.rotateOnAxis(new THREE.Vector3(0,1,0), delta);
+  }
+}
+
+// --- EXIT DOOR WIRING -------------------------------------------------------
+const EXIT_DOOR_NAMES = [
+  "Sketchfab_model.002",
+];
+
+function findExitNode(root) {
+  // try candidates by loose name
+  for (const nm of EXIT_DOOR_NAMES) {
+    const n = getNodeByLooseName(root, nm);
+    if (n) return n;
+  }
+  // last resort: pick the *largest door-like* object by bounding box height+width
+  let best = null, bestScore = -Infinity;
+  root.traverse(o => {
+    if (!o.isMesh || !o.visible) return;
+    const name = (o.name || "").toLowerCase();
+    if (!name.includes("door")) return;
+    const box = new THREE.Box3().setFromObject(o);
+    if (!isFinite(box.min.x)) return;
+    const size = new THREE.Vector3(); box.getSize(size);
+    const score = size.x + size.y; // “big door-ish”
+    if (score > bestScore) { bestScore = score; best = o; }
+  });
+  return best;
+}
+
+function wireExitInteractable(root) {
+  const node = findExitNode(root);
+  if (!node) { console.warn("[level3] no exit door found"); return null; }
+
+  node.userData.interactable = true;
+  node.userData.interactionType = "exit";
+  node.userData.getInteractLabel = () => "Press E to Exit";
+  // If your main ever calls onInteract directly, this still works:
+  node.userData.onInteract = () => {
+    window.dispatchEvent(new CustomEvent("level3:exit"));
+  };
+
+  console.log(`[level3] exit wired on "${node.name}"`);
+  return node;
+}
+
 export default async function loadLevel3(scene) {
   const loader = new GLTFLoader();
 
@@ -161,37 +341,41 @@ export default async function loadLevel3(scene) {
         }
       }
 
+      // *** Make specific doors walk-through
+      const { passthrough, colliders: filteredColliders } =
+      makeDoorsPassable(lab, PASSABLE_DOOR_NAMES, colliders);
+
       // Dispatch to controls (your main.js listens to this)
       window.dispatchEvent(new CustomEvent("level:colliders", {
-        detail: { colliders, passthrough: [], rayTargets }
+        detail: { colliders, filteredColliders, passthrough, rayTargets }
       }));
 
-      // ------------ DOORS: final confirmed list (rotate-in-place, robust matching) ------------
-      const DOOR_NAMES = [
-        "door1",
-        "door1.001",
-        "doorBlue.001",
-        "Green Metal Door.001",
-        "doorBlue",
-        "Green Metal Door",
-      ];
+      wireExitInteractable(lab);
 
-      const doors = [];
-      for (const name of DOOR_NAMES) {
-        const node = getNodeByLooseName(lab, name);
-        if (!node) {
-          console.warn("[level3] door not found:", name);
-          continue;
-        }
-        const d = new SimpleRotatingDoor(node, 100 /*openAngleDeg*/, 6.0 /*speed*/);
+      // ------------ DOORS: configure by name + hinge side ----------------
+    const DOOR_CONFIG = [
+      { name: "door1",         side: "left",  openAngleDeg: 100, speed: 6.0 },
+      { name: "door1.001",     side: "left",  openAngleDeg: 100, speed: 6.0 },
+      { name: "doorBlue.001",  side: "right", openAngleDeg: 100, speed: 6.0 },
+      { name: "Green Metal Door.001", side: "right", openAngleDeg: 100, speed: 6.0 },
+      { name: "doorBlue",      side: "right", openAngleDeg: 100, speed: 6.0 },
+      { name: "Green Metal Door", side: "right", openAngleDeg: 100, speed: 6.0 },
+    ];
+
+    const doors = [];
+    for (const cfg of DOOR_CONFIG) {
+      const node = getNodeByLooseName(lab, cfg.name);
+      if (!node) { console.warn("[level3] door not found:", cfg.name); continue; }
+      try {
+        const d = new HingedDoor(node, cfg);
         doors.push(d);
 
-        // Helpful log: the exact node we resolved
-        const wp = new THREE.Vector3();
-        (node.isObject3D ? node : d.node).getWorldPosition(wp);
-        console.log(`[level3] door wired (rotate-in-place): "${name}" (resolved "${node.name}") at`, wp.toArray().map(n=>+n.toFixed(2)));
+        const wp = new THREE.Vector3(); node.getWorldPosition(wp);
+        console.log(`[level3] door hinged: "${cfg.name}" → "${node.name}" (side=${cfg.side}) at`, wp.toArray().map(n => +n.toFixed(2)));
+      } catch (e) {
+        console.warn("[level3] failed to hinge door", cfg.name, e);
       }
-
+    }
       // drive door animations each frame (main.js calls this if present)
       scene.userData.levelTick = (dt) => { for (const d of doors) d.update(dt); };
 

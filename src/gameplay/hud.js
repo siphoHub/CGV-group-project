@@ -3,9 +3,7 @@ export class HUD {
   constructor() {
     // --- Objectives ---
     this.objectives = [
-      { id: 1, text: "Turn on the power", completed: false },
-      { id: 2, text: "Find the Flashlight", completed: false },
-      { id: 3, text: "Enter the elevator", completed: false },
+      { id: 1, text: "Find exit", completed: false },
     ];
 
     // --- Flashlight smooth % ---
