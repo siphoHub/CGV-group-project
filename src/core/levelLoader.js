@@ -1,5 +1,6 @@
 //levelloader
 import loadLevel1 from "../env/level1.js";
+import loadLevel3 from "../env/level3.js";
 import loadLevel2 from "../env/level2.js";
 
 let currentLevel = "level1";
@@ -16,9 +17,14 @@ export function isLevelTransitioning() {
 export function loadLevel(levelName, scene) {
   switch (levelName) {
     case "level1":
-      return loadLevel1(scene);
+      loadLevel1(scene);
+      break;
+    case "level3":
+      loadLevel3(scene);
+      break;
     case "level2":
-      return loadLevel2(scene);
+      loadLevel2(scene);
+      break;
     default:
       console.warn(`Level ${levelName} not found`);
       return Promise.resolve();

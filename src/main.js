@@ -56,8 +56,8 @@ let doorManager = null;
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-5);
-camera.lookAt(0, 1.7, 0);
+//camera.position.set(0,1.7,-5);
+//camera.lookAt(0, 1.7, 0);
 
 
 // --- Dev helpers (ignored by interaction) ---
@@ -265,6 +265,9 @@ let lights;
 async function loadLevelInBackground() {
 
   // Load the level
+  //loadLevel("level1", scene);
+  loadLevel("level3", scene);
+  
   await loadLevel("level1", scene);
 
   lights=createLighting(scene,camera);
@@ -664,6 +667,26 @@ function initializeGame(lights) {
         if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
       }
     });
+
+    // 🔽 center-screen raycast fallback up to ~3m (additive; does not remove your behavior)
+    if (!nearest) {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+      ray.far = 3.0;
+      const hits = ray.intersectObjects(scene.children, true);
+      for (const h of hits) {
+        let cur = h.object;
+        while (cur) {
+          if (cur.userData?.interactable) { nearest = cur; break; }
+          cur = cur.parent;
+        }
+        if (nearest) break;
+      }
+    }
+
+    //if (nearest) gameController.handleInteraction(nearest);
+    // ensure object-local onInteract is called (non-breaking fallback)
+    //if (nearest) nearest.userData?.onInteract?.();
     
     if (nearest) {
       // Check if this is Object_7 (keycode terminal)
@@ -996,6 +1019,22 @@ function checkForInteractables() {
     }
   });
 
+  // 🔽 ADDITIVE: fallback — if no proximity target, use center-screen raycast (up to ~3m)
+  if (!target) {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+    ray.far = 3.0;
+    const hits = ray.intersectObjects(scene.children, true);
+    for (const h of hits) {
+      let cur = h.object;
+      while (cur) {
+        if (cur.userData?.interactable) { target = cur; break; }
+        cur = cur.parent;
+      }
+      if (target) break;
+    }
+  }
+
   if (target) {
     interactionIndicator.style.display = "block";
     const p = target.getWorldPosition(new THREE.Vector3()); 
@@ -1124,6 +1163,10 @@ function animate() {
   }
 
   update(dt);                                   // drive unified controls
+
+  // non-breaking: allow level-local animations (e.g., doors) to tick when provided
+  if (scene.userData?.levelTick) scene.userData.levelTick(dt);
+
   if (doorManager) {
     doorManager.update(dt);                     // update door animations
   }
