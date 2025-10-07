@@ -28,12 +28,12 @@ export function loadLevel(levelName, scene) {
 // Clear all level objects from scene while preserving UI, lights, and helpers
 function clearCurrentLevel(scene) {
   const objectsToRemove = [];
-
+  
   scene.traverse((child) => {
     // Remove level geometry but preserve lights, camera, helpers, and HUD elements
-    if (child.isMesh &&
-        !child.userData.ignoreInteract &&
-        !child.userData.isLight &&
+    if (child.isMesh && 
+        !child.userData.ignoreInteract && 
+        !child.userData.isLight && 
         !child.userData.isHelper &&
         !child.userData.isPersistent) {
       objectsToRemove.push(child);
@@ -50,21 +50,21 @@ function clearCurrentLevel(scene) {
         objectsToRemove.push(child);
       }
     }
-
+    
     // Remove old lighting that's not marked as persistent
-    if ((child.isDirectionalLight || child.isPointLight || child.isSpotLight || child.isHemisphereLight) &&
-        !child.userData.isPersistent &&
+    if ((child.isDirectionalLight || child.isPointLight || child.isSpotLight || child.isHemisphereLight) && 
+        !child.userData.isPersistent && 
         !child.userData.ignoreInteract) {
       objectsToRemove.push(child);
     }
   });
-
+  
   objectsToRemove.forEach(obj => {
     if (obj.parent) {
       obj.parent.remove(obj);
     }
   });
-
+  
   console.log(`[LevelLoader] Cleared ${objectsToRemove.length} objects from scene`);
 }
 
@@ -73,17 +73,17 @@ export async function progressToLevel2(scene, gameController, camera) {
   if (currentLevel !== "level1" || isTransitioning) {
     return false;
   }
-
+  
   console.log("[LevelLoader] Starting transition to Level 2...");
   isTransitioning = true;
-
+  
   // Show loading screen
   showLoadingScreen();
-
+  
   try {
     // Clear current level
     clearCurrentLevel(scene);
-
+    
     // Clear cached interactables
     if (window.cachedInteractables) {
       window.cachedInteractables = [];
@@ -114,31 +114,36 @@ export async function progressToLevel2(scene, gameController, camera) {
       flashlight.userData.isPersistent = true; // Mark as persistent
       console.log("[LevelLoader] Flashlight functionality preserved for Level 2");
     }
-
-    // Update objectives
+    
+    // Update objectives for level 2
     if (gameController) {
-      gameController.addObjective("Explore the new facility");
-      gameController.addObjective("Use flashlight to navigate the dark facility");
+      // Initialize level 2 specific objectives
+      if (typeof gameController.initializeLevel2Objectives === 'function') {
+        gameController.initializeLevel2Objectives();
+      } else {
+        // Fallback if method doesn't exist
+        gameController.addObjective("Find clue to open office door");
+      }
     }
-
+    
     // Update collision detection for new level
     setTimeout(() => {
       if (window.updateInteractableCache) {
         window.updateInteractableCache();
       }
     }, 100);
-
+    
     console.log("[LevelLoader] Level 2 loading complete!");
-
+    
     // Hide loading screen only after everything is loaded
     setTimeout(() => {
       hideLoadingScreen();
       isTransitioning = false;
       console.log("[LevelLoader] Transition to Level 2 complete!");
     }, 300); // Small delay to ensure everything is ready
-
+    
     return true;
-
+    
   } catch (error) {
     console.error("[LevelLoader] Error during level transition:", error);
     hideLoadingScreen();
@@ -150,7 +155,7 @@ export async function progressToLevel2(scene, gameController, camera) {
 // Loading screen functions
 function showLoadingScreen() {
   let loadingScreen = document.getElementById('loading-screen');
-
+  
   if (!loadingScreen) {
     loadingScreen = document.createElement('div');
     loadingScreen.id = 'loading-screen';
@@ -175,7 +180,7 @@ function showLoadingScreen() {
       font-family: monospace;
       color: white;
     `;
-
+    
     const style = document.createElement('style');
     style.textContent = `
       .loading-content {
@@ -208,7 +213,7 @@ function showLoadingScreen() {
     document.head.appendChild(style);
     document.body.appendChild(loadingScreen);
   }
-
+  
   loadingScreen.style.display = 'flex';
   console.log("[LevelLoader] Loading screen shown");
 }

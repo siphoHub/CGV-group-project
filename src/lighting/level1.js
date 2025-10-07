@@ -17,14 +17,13 @@ dirLight.shadow.camera.near = 0.5;
 dirLight.shadow.camera.far = 50;
 scene.add(dirLight);
 
-
 // fog
 scene.fog = new THREE.FogExp2(0x000000, 0.01);
 
 const flashlight=new THREE.SpotLight(
     0xffffff,   //colour
-    8,          //intensity
-    100,         //distance
+    100,          //intensity (increased from 10 to 100)
+    250,         //distance (increased from 100 to 250)
     Math.PI/6,  //angle
     0.3,        //edges
     1
@@ -86,9 +85,6 @@ positions.forEach((pos, index) => {
   scene.add(light);
   redLights.push(light);
 });
-
-
-
 
 return  { flashlight, redLights, hemi, dirLight, updateFlashlightBeam }
 
