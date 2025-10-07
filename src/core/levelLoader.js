@@ -1,78 +1,82 @@
-//levelloader
+// src/core/levelLoader.js
 import loadLevel1 from "../env/level1.js";
-import loadLevel3 from "../env/level3.js";
 import loadLevel2 from "../env/level2.js";
+import loadLevel3 from "../env/level3.js";
 
-let currentLevel = "level1";
+let currentLevel = null;
+let currentRoot  = null;   // <- the Group returned by the env loader
 let isTransitioning = false;
 
-export function getCurrentLevel() {
-  return currentLevel;
+export function getCurrentLevel() { 
+  return currentLevel; 
 }
 
-export function isLevelTransitioning() {
-  return isTransitioning;
+export function isLevelTransitioning() { 
+  return isTransitioning; 
 }
 
+//Load a level and set currentRoot/currentLevel. 
+//Returns a Promise<Group|null>.
 export function loadLevel(levelName, scene) {
-  switch (levelName) {
-    case "level1":
-      loadLevel1(scene);
-      break;
-    case "level3":
-      loadLevel3(scene);
-      break;
-    case "level2":
-      loadLevel2(scene);
-      break;
-    default:
-      console.warn(`Level ${levelName} not found`);
-      return Promise.resolve();
-  }
+  let p;
+  if (levelName === "level1") p = loadLevel1(scene);
+  else if (levelName === "level2") p = loadLevel2(scene);
+  else if (levelName === "level3") p = loadLevel3(scene);
+  else return Promise.reject(new Error(`Level ${levelName} not found`));
+
+  return p.then(root => {
+    currentRoot  = root;
+    currentLevel = levelName;
+    // Some env loaders already dispatch "level:loaded" — that's fine.
+    // Keeping this central assignment ensures we can dispose later.
+    return root;
+  });
 }
 
-// Clear all level objects from scene while preserving UI, lights, and helpers
-function clearCurrentLevel(scene) {
-  const objectsToRemove = [];
-  
-  scene.traverse((child) => {
-    // Remove level geometry but preserve lights, camera, helpers, and HUD elements
-    if (child.isMesh && 
-        !child.userData.ignoreInteract && 
-        !child.userData.isLight && 
-        !child.userData.isHelper &&
-        !child.userData.isPersistent) {
-      objectsToRemove.push(child);
-    }
-    // Also remove the entire model groups
-    if (child.isGroup && child.children.length > 0 && !child.userData.isPersistent) {
-      let hasLevelGeometry = false;
-      child.traverse((grandchild) => {
-        if (grandchild.isMesh && !grandchild.userData.ignoreInteract) {
-          hasLevelGeometry = true;
-        }
-      });
-      if (hasLevelGeometry) {
-        objectsToRemove.push(child);
+//Dispose geometries/materials/textures in a subtree
+function disposeObject3D(root) {
+  if (!root) return;
+  root.traverse(node => {
+    // geometry
+    if (node.geometry) node.geometry.dispose?.();
+    // materials + textures
+    const mats = node.material
+      ? (Array.isArray(node.material) ? node.material : [node.material])
+      : [];
+    for (const m of mats) {
+      for (const k in m) {
+        const val = m[k];
+        if (val && val.isTexture) val.dispose?.();
       }
-    }
-    
-    // Remove old lighting that's not marked as persistent
-    if ((child.isDirectionalLight || child.isPointLight || child.isSpotLight || child.isHemisphereLight) && 
-        !child.userData.isPersistent && 
-        !child.userData.ignoreInteract) {
-      objectsToRemove.push(child);
+      m.dispose?.();
     }
   });
-  
-  objectsToRemove.forEach(obj => {
-    if (obj.parent) {
-      obj.parent.remove(obj);
-    }
-  });
-  
-  console.log(`[LevelLoader] Cleared ${objectsToRemove.length} objects from scene`);
 }
+
+/** Clear ONLY the active level’s root (and free GPU resources) */
+export function clearCurrentLevel(scene) {
+  if (!currentRoot) return;
+
+  // detach from scene
+  if (currentRoot.parent) currentRoot.parent.remove(currentRoot);
+
+  // free GPU memory
+  disposeObject3D(currentRoot);
+
+  currentRoot = null;
+  currentLevel = null;
+
+  // also clear colliders for controls
+  window.dispatchEvent(new CustomEvent("level:colliders", {
+    detail: { colliders: [], passthrough: [], rayTargets: [] }
+  }));
+
+  // stop any per-level ticking
+  if (scene.userData?.levelTick) delete scene.userData.levelTick;
+
+  console.log("[LevelLoader] Active level disposed & cleared.");
+}
+
 
 // Progress to next level with loading screen
 export async function progressToLevel2(scene, gameController, camera) {

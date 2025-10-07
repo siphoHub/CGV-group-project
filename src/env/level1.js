@@ -160,7 +160,7 @@ export default async function loadLevel1(scene) {
         if (isTiny(b)) continue;
 
         
-        if (forceMatch(name) || true) {
+        if (forceMatch(name)) {
           colliders.push(b);
         }
       }
@@ -170,9 +170,10 @@ export default async function loadLevel1(scene) {
       }));
 
       console.log("[level1] GLB loaded | colliders:", colliders.length, "passthrough:", passthrough.length);
-      
+      return lobby;
   } catch (error) {
     console.error("Error loading GLB:", error);
+    return null;
   }
 }
 

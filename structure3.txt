@@ -28,6 +28,7 @@
 │       │   ├── step8.mp3
 │       │   └── step9.mp3
 │       ├── blenderL2.glb
+│       ├── blenderL3.glb
 │       └── blenderLevel1.glb
 ├── src
 │   ├── controls
@@ -38,7 +39,8 @@
 │   │   └── levelLoader.js
 │   ├── env
 │   │   ├── level1.js
-│   │   └── level2.js
+│   │   ├── level2.js
+│   │   └── level3.js
 │   ├── gameplay
 │   │   ├── Doors.js
 │   │   ├── cutscene.js
@@ -47,9 +49,10 @@
 │   ├── lighting
 │   │   └── level1.js
 │   └── main.js
+├── structure0.txt
 ├── structure1.txt
 ├── structure2.txt
 ├── structure3.txt
 └── vite.config.js
 
-10 directories, 43 files
+10 directories, 46 files

@@ -197,10 +197,12 @@ export default async function loadLevel3(scene) {
 
       //test if the model loads in browser
       console.log("GLB loaded");
+      return lab;
   }
 
   catch(error){
     console.error("Error loading GLB:", error);
+    return null;
   }
 
 }

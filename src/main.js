@@ -263,11 +263,6 @@ let gameController;
 let lights;
 
 async function loadLevelInBackground() {
-
-  // Load the level
-  //loadLevel("level1", scene);
-  loadLevel("level3", scene);
-  
   await loadLevel("level1", scene);
 
   lights=createLighting(scene,camera);
@@ -294,8 +289,13 @@ async function loadLevelInBackground() {
 }
 // --- Game init (HUD + interaction loop) --
 let interactionIndicator;
+let gameInitialized = false;
 
 function initializeGame(lights) {
+  if (gameInitialized) return;  // <-- guard
+  
+  gameInitialized = true;
+
   // place player at spawn (you can tune this)
   resetPlayer();
 

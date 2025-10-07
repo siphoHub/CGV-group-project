@@ -9,6 +9,7 @@ export default async function loadLevel2(scene) {
   const colliders = [];
   const rayTargets = [];
   const passthrough = [];
+  const attachments = []; // track extra nodes we create (anchors)
 
   // ------------ Door config ------------
   // Map the names you actually have. You can add more entries or rely on the heuristic below.
@@ -71,7 +72,7 @@ export default async function loadLevel2(scene) {
   const doors = [];
 
   // --- Correct hinge setup: rotate around the DOOR'S local Y axis (expressed in world space) ---
-  function setupDoor(node, cfg) {
+  function setupDoor(node, cfg, attachParent) {
     node.updateWorldMatrix(true, false);
     const baseMatrix = node.matrixWorld.clone();
 
@@ -131,7 +132,9 @@ export default async function loadLevel2(scene) {
       if (!d) return;
       d.target = d.target > 0 ? 0 : 1;   // toggle open/close
     };
-    scene.add(anchor);
+    // attach under the level so it gets disposed with it
+    (attachParent || scene).add(anchor);
+    attachments.push(anchor);
 
     // Also mark the actual door mesh as interactable (so “E” scanning finds it too)
     node.userData.interactable = true;
@@ -185,29 +188,18 @@ export default async function loadLevel2(scene) {
     d.node.matrix.copy(M);
   }
 
-  // Animate doors
-  let lastTS = performance.now();
-  function tickDoors() {
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - lastTS) / 1000);
-    lastTS = now;
-
+  // We'll let main.js drive updates via scene.userData.levelTick to avoid perpetual RAF leaks.
+  function updateDoors(dt) {
     for (const d of doors) {
       if (d.t !== d.target) {
         const step = dt / d.speed;
         d.t = THREE.MathUtils.clamp(d.t + Math.sign(d.target - d.t) * step, 0, 1);
-
-        // smoothstep without distorting the state variable we compare against
-        const s = d.t * d.t * (3 - 2 * d.t);
-        const saved = d.t; d.t = s;
-        applyDoorPose(d);
-        d.t = saved;
-
+        const s = d.t * d.t * (3 - 2 * d.t); // smoothstep
+        const saved = d.t; d.t = s; applyDoorPose(d); d.t = saved;
         if (s >= 0.25 && !d.added) { addPassBoxOnce(d.passBox); d.added = true; }
         else if (s <= 0.05 && d.added) { removePassBox(d.passBox); d.added = false; }
       }
     }
-    requestAnimationFrame(tickDoors);
   }
 
   try {
@@ -215,6 +207,11 @@ export default async function loadLevel2(scene) {
     const facility = gltf.scene;
     facility.scale.set(1, 1, 1);
     facility.position.set(0, 0, 0);
+
+    // container for runtime bits (anchors etc.) so disposal is easy
+    const runtime = new THREE.Group();
+    runtime.name = "Level2_Runtime";
+    facility.add(runtime);
 
     let meshCount = 0;
     let optimizedCount = 0;
@@ -306,7 +303,7 @@ export default async function loadLevel2(scene) {
       if (!o.name) return;
       const cfg = configForName(o.name);
       if (!cfg) return;
-      const rec = setupDoor(o, cfg);
+      const rec = setupDoor(o, cfg, runtime);
       if (rec) { doors.push(rec); hooked.push(`${o.name}[${rec.requiredKey}]`); }
     });
 
@@ -318,7 +315,9 @@ export default async function loadLevel2(scene) {
         if (typeof window.updateInteractableCache === "function") {
           window.updateInteractableCache();
         }
-      } catch {}
+      } catch {
+        // Ignore errors during interactable cache refresh
+      }
     };
     refresh();
     setTimeout(refresh, 80);
@@ -333,9 +332,13 @@ export default async function loadLevel2(scene) {
     console.log(`[Level2] GLB loaded | Meshes: ${meshCount} | Optimized: ${optimizedCount} | Colliders: ${colliders.length}`);
     console.log(hooked.length ? `[Level2] Swing doors ready: ${hooked.join(", ")}` : "[Level2] No doors matched; check names.");
 
-    requestAnimationFrame(tickDoors);
+    // expose a tick so main.js can drive animations and we can stop when the level is cleared
+    scene.userData.levelTick = (dt) => updateDoors(dt);
+    facility.userData.attachments = attachments; // in case you want to do custom cleanup
+    return facility;
   } catch (error) {
     console.error("Error loading Level 2 GLB:", error);
+    return null;
   }
 }
 
