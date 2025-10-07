@@ -3,7 +3,9 @@ export class HUD {
   constructor() {
     // --- Objectives ---
     this.objectives = [
-      { id: 1, text: "Find the Flashlight", completed: false },
+      { id: 1, text: "Turn on the power", completed: false },
+      { id: 2, text: "Find the Flashlight", completed: false },
+      { id: 3, text: "Enter the elevator", completed: false },
     ];
 
     // --- Flashlight smooth % ---
@@ -53,7 +55,7 @@ export class HUD {
         <h4>INVENTORY</h4>
         <div id="inventory-items">
           <div id="flashlight-item" class="inventory-item hidden">
-            <img src="/assets/FlashlightIcon.jpg" 
+            <img src="/models/assets/FlashlightIcon.jpg" 
                  alt="Flashlight" class="inventory-icon flashlight-image">
             <span class="inventory-label">Flashlight</span>
           </div>
@@ -64,6 +66,11 @@ export class HUD {
 ╚══╧══╝</pre>
             </div>
             <span class="inventory-label">Batteries</span>
+          </div>
+          <div id="keycard-item" class="inventory-item hidden">
+            <img src="/models/assets/KeycardIcon.png" 
+                 alt="Keycard" class="inventory-icon keycard-image">
+            <span class="inventory-label">Keycard</span>
           </div>
         </div>
       </div>
@@ -82,6 +89,7 @@ export class HUD {
                 <div class="control-item"><span class="key">Mouse</span> - Look around</div>
                 <div class="control-item"><span class="key">E</span> - Interact</div>
                 <div class="control-item"><span class="key">F</span> - Toggle flashlight</div>
+                <div class="control-item"><span class="key">C</span> - Crouch</div>
                 <div class="control-item"><span class="key">M</span> - Toggle music</div>
                 <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
               </div>
@@ -122,7 +130,7 @@ export class HUD {
       #objectives-panel.parchment{
         position: absolute; top: 20px; left: 20px;
         width: 360px; height: 240px;              /* keep ratio with your PNG */
-        background: url('/assets/ObjectivesPage.png') center/contain no-repeat; /* use the PNG with transparent edges */
+        background: url('/models/assets/ObjectivesPage.png') center/contain no-repeat; /* use the PNG with transparent edges */
         filter: drop-shadow(0 6px 16px rgba(0,0,0,0.35));
         transform: rotate(-1.2deg); transform-origin: top left; /* small diegetic tilt */
       }
@@ -543,6 +551,12 @@ export class HUD {
     this.batteryLife = this.maxBatteryLife;
     this.updateBatteryDisplay();
     this._updateFlashlightUI();
+  }
+
+  foundKeycard() {
+    this.hasKeycard = true;
+    document.getElementById('keycard-item')?.classList.remove('hidden');
+    this.showMessage('You found a keycard! This might open locked doors.', 3000);
   }
 
   toggleFlashlight() {

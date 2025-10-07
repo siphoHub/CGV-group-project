@@ -2,13 +2,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-export default function loadLevel1(scene) {
+export default async function loadLevel1(scene) {
   const loader = new GLTFLoader();
 
-  loader.load("/models/blenderLevel1.glb",
-    (gltf) => {
-      const lobby = gltf.scene;
-      lobby.scale.set(1, 1, 1);
+  try {
+    const gltf = await loader.loadAsync("/models/blenderLevel1.glb");
+    const lobby = gltf.scene;
+    lobby.scale.set(1, 1, 1);
 
     
       const box = new THREE.Box3().setFromObject(lobby);
@@ -21,16 +21,51 @@ export default function loadLevel1(scene) {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
+          
+          // Log all mesh names to help identify generator objects
+          if (child.name) {
+            console.log(`[Level1] Found mesh: ${child.name}`);
+            
+            // Check for potential generator-related names
+            const name = child.name.toLowerCase();
+            if (name === 'powerpulse1') {
+              console.log(`[POTENTIAL GENERATOR] Found generator object: ${child.name}`);
+            }
+          }
+          
          // mark objects as interactable. person doing interactions to replace
           if (child.name === "Flashlight Camping" ||
               child.name === "Flash_Light_Body_high" || 
               child.name === "Flash_Light_Cover_high" || 
               child.name === "Flash_Light_Metal_high" || 
               child.name === "AA Battery.001"){
-                 child.userData.interactable = true;
+                 child.userData.interactable = false; // Not interactable until generator on
+                 console.log(`[Interactable] Marked as interactable: ${child.name}`);
+          }
             
-            // Move flashlight parts to reception desk location
-            if (child.name.includes("Flash_Light")) {
+          // Mark generator as found but not initially interactable
+          if (child.name === "powerpulse1") {
+            child.userData.interactable = true; // Interactable from the start
+            child.userData.isGenerator = true; // Flag to identify it as generator
+            console.log(`[Generator] Found powerpulse1 generator object - interactable from start`);
+          }
+          
+          // Mark objects containing "Log" as interactable
+          if (child.name && child.name.toLowerCase().includes('log')) {
+            child.userData.interactable = true;
+            console.log(`[Level1] Marked Log object as interactable: ${child.name}`);
+          }
+          
+          // Mark Mesh_0001 as elevator (only interactable after flashlight obtained)
+          if (child.name === 'Mesh_0001') {
+            child.userData.interactable = false; // Start as non-interactable
+            child.userData.interactionType = 'elevator';
+            child.userData.requiresFlashlight = true;
+            console.log(`[Level1] Marked Mesh_0001 as elevator (requires flashlight)`);
+          }
+          
+          // Move flashlight parts to reception desk location
+          if (child.name.includes("Flash_Light")) {
               child.position.set(0.1, -0.4, 0); // Reception desk position (adjust as needed)
               
               // Rotate flashlight 135 degrees around X axis (horizontal)
@@ -52,7 +87,6 @@ export default function loadLevel1(scene) {
               // Store reference to aura for interaction detection
               child.userData.aura = whiteAura;
             }
-          }
         }
       });
 
@@ -136,10 +170,10 @@ export default function loadLevel1(scene) {
       }));
 
       console.log("[level1] GLB loaded | colliders:", colliders.length, "passthrough:", passthrough.length);
-    },
-    undefined,
-    (error) => console.error("Error loading GLB:", error)
-  );
+      
+  } catch (error) {
+    console.error("Error loading GLB:", error);
+  }
 }
 
 function growBox(b, { x = 0, y = 0, z = 0 }) {

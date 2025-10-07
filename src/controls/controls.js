@@ -3,10 +3,44 @@ import * as THREE from 'three';
 
 export function createControls(camera, domElement) {
   const controls = new PointerLockControls(camera, domElement);
-
   domElement.addEventListener('click', () => controls.lock());
   controls.addEventListener('lock',   () => console.log('[controls] LOCKED'));
   controls.addEventListener('unlock', () => console.log('[controls] UNLOCKED'));
+
+  // --- Footstep SFX ---------------------------------------------------------
+  // Drop 4–8 eerie footstep clips into /public/models/assets/
+  const FOOTSTEP_PATHS = [
+    '../public/models/assets/step1.mp3',
+    '../public/models/assets/step2.mp3',
+    '../public/models/assets/step3.mp3',
+    '../public/models/assets/step4.mp3',
+    '../public/models/assets/step5.mp3',
+    '../public/models/assets/step5.mp3',
+    '../public/models/assets/step6.mp3',
+    '../public/models/assets/step7.mp3',
+    '../public/models/assets/step8.mp3',
+    '../public/models/assets/step9.mp3',
+    '../public/models/assets/step10.mp3',
+  ];
+  // Preload a small pool so rapid steps don’t get cut off
+  const footstepPool = FOOTSTEP_PATHS.map(p => {
+    const a = new Audio(p);
+    a.preload = 'auto';
+    a.volume = 0.35;         // global footstep volume
+    return a;
+  });
+  let footIdx = 0;           // round-robin in the pool
+  let sinceLastStep = 0;     // seconds
+  let wasMoving = false;     // edge detect start/stop
+ 
+ function playFootstep() {
+    const a = footstepPool[footIdx];
+    footIdx = (footIdx + 1) % footstepPool.length;
+    a.playbackRate = 0.95 + Math.random() * 0.1;
+    try { a.currentTime = 0; a.play(); } catch {
+      // Ignore playback errors (e.g., user gesture required)
+    }
+  }
 
   // input
   const keys = new Map();
@@ -82,41 +116,55 @@ export function createControls(camera, domElement) {
     return false;
   }
 
-  // ---------- MULTI-RAY CLEARANCE TEST ----------
-  // Cast 9 rays (3 heights × 3 sideways offsets). If ANY hits triangles within the step, it's blocked.
+  // ---------- OPTIMIZED MULTI-RAY CLEARANCE TEST ----------
+  // Reduced from 9 rays to 5 rays (3 heights × center + 2 heights × sides) for better performance
   function volumeClear(origin, intendedDir, stepDist) {
     if (!RAY_TARGETS.length || stepDist <= 0) return false; // no targets -> be conservative (blocked)
 
     const dir = intendedDir.clone().normalize();
     const side = new THREE.Vector3().crossVectors(dir, UP).normalize();
 
-    // Heights relative to feet (knee, hip, shoulder)
+    // Heights relative to feet (reduced to 3: knee, hip, shoulder)
     const hFeet = origin.y - HEAD_STAND;
     const heights = [hFeet + 0.45, hFeet + 0.95, hFeet + 1.35];
 
-    // Side offsets: center, ± ~radius
+    // Side offsets: center and sides (reduced rays)
     const s = PLAYER_RADIUS * 0.9;
-    const lateral = [0, +s, -s];
-
+    
     // Ray length slightly beyond step to avoid scraping through edges
     const FAR = Math.max(0.25, stepDist + PLAYER_RADIUS * 0.2);
 
+    // Test center rays at all heights
     for (let hi = 0; hi < heights.length; hi++) {
-      for (let li = 0; li < lateral.length; li++) {
-        const start = new THREE.Vector3()
-          .copy(origin)
-          .addScaledVector(side, lateral[li]);
-        start.y = heights[hi];
+      const start = origin.clone();
+      start.y = heights[hi];
 
-        raycaster.set(start, dir);
-        raycaster.far = FAR;
+      raycaster.set(start, dir);
+      raycaster.far = FAR;
 
-        const hits = raycaster.intersectObjects(RAY_TARGETS, true);
-        if (hits.length > 0) {
-          return false; // something in the way at this band/offset
-        }
+      const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+      if (hits.length > 0) {
+        return false; // something in the way at center
       }
     }
+
+    // Test side rays only at middle height for performance
+    const midHeight = hFeet + 0.95;
+    for (const offset of [+s, -s]) {
+      const start = new THREE.Vector3()
+        .copy(origin)
+        .addScaledVector(side, offset);
+      start.y = midHeight;
+
+      raycaster.set(start, dir);
+      raycaster.far = FAR;
+
+      const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+      if (hits.length > 0) {
+        return false; // something in the way at sides
+      }
+    }
+    
     return true; // no hits on any ray -> real opening ahead
   }
 
@@ -130,10 +178,14 @@ export function createControls(camera, domElement) {
     if (keys.get('KeyA') || keys.get('ArrowLeft'))  right   -= 1;
 
     const sprinting = keys.get('ShiftLeft')   || keys.get('ShiftRight');
-    const crouching = keys.get('ControlLeft') || keys.get('ControlRight');
+    const crouching = keys.get('KeyC');
     const speed = crouching ? SPEED_CROUCH : (sprinting ? SPEED_SPRINT : SPEED_WALK);
 
-    if (forward !== 0 || right !== 0) {
+    // Footstep cadence
+    const STEP_INTERVAL = crouching ? 0.65 : (sprinting ? 0.35 : 0.50);
+
+    const moving = (forward !== 0 || right !== 0);
+    if (moving) {
       const inv = 1 / Math.hypot(forward, right);
       forward *= inv; right *= inv;
 
@@ -145,44 +197,50 @@ export function createControls(camera, domElement) {
       const base = camera.position;
       const intendedDir = tmpFwd.clone().multiplyScalar(forward).add(tmpRight.clone().multiplyScalar(right));
 
-      // desired next position
       tmpNext.copy(base)
         .addScaledVector(tmpFwd,  forward * dist)
         .addScaledVector(tmpRight, right   * dist);
 
+      // Collision detection enabled
       if (COLLIDERS.length === 0 && PASSTHROUGH.length === 0) {
-        base.copy(tmpNext); // no collision data yet
+        base.copy(tmpNext);
       } else if (!positionLooksBlocked(tmpNext)) {
         base.copy(tmpNext);
+      } else if (volumeClear(base, intendedDir, dist)) {
+        base.copy(tmpNext);
       } else {
-        // Coarse said "blocked" — run multi-ray clearance. If clear -> allow (e.g., doorway gap).
-        if (volumeClear(base, intendedDir, dist)) {
-          base.copy(tmpNext);
-        } else {
-          // Slide X then Z (each with clearance test)
-          const dx = tmpFwd.x * forward * dist + tmpRight.x * right * dist;
-          const dz = tmpFwd.z * forward * dist + tmpRight.z * right * dist;
-
-          const tryAxis = (ax, az) => {
-            tmpNext.set(base.x + ax, base.y, base.z + az);
-            if (!positionLooksBlocked(tmpNext) || volumeClear(base, new THREE.Vector3(ax,0,az), Math.hypot(ax,az))) {
-              base.set(tmpNext.x, tmpNext.y, tmpNext.z);
-              return true;
-            }
-            return false;
-          };
-
-          if (!tryAxis(dx, 0)) {
-            tryAxis(0, dz);
+        const dx = tmpFwd.x * forward * dist + tmpRight.x * right * dist;
+        const dz = tmpFwd.z * forward * dist + tmpRight.z * right * dist;
+        const tryAxis = (ax, az) => {
+          tmpNext.set(base.x + ax, base.y, base.z + az);
+          if (!positionLooksBlocked(tmpNext) || volumeClear(base, new THREE.Vector3(ax,0,az), Math.hypot(ax,az))) {
+            base.set(tmpNext.x, tmpNext.y, tmpNext.z);
+            return true;
           }
-        }
+          return false;
+        };
+        if (!tryAxis(dx, 0)) tryAxis(0, dz);
       }
     }
+
+    // footsteps timing
+    if (moving) {
+      sinceLastStep += dt;
+      if (!wasMoving) {
+        sinceLastStep = Math.min(sinceLastStep, STEP_INTERVAL * 0.6);
+      }
+      if (sinceLastStep >= STEP_INTERVAL) {
+        sinceLastStep = 0;
+        playFootstep();
+      }
+    } else {
+      sinceLastStep = 0;
+    }
+    wasMoving = moving;
 
     // smooth head height
     const targetY = crouching ? HEAD_CROUCH : HEAD_STAND;
     camera.position.y += (targetY - camera.position.y) * Math.min(1, dt * 10);
   }
-
   return { controls, update, setColliders };
 }
