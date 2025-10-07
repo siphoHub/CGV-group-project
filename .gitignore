@@ -4,3 +4,4 @@ dist
 .env
 public/models/*.glb
 !public/models/blenderL3.glb
+!public/models/blenderL2.glb
