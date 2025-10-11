@@ -11,7 +11,7 @@ export default async function loadLevel3(scene) {
 
      const lab = gltf.scene;
       lab.scale.set(1, 1, 1);
-      lab.position.set(0, 0, 0);
+      lab.position.set(0, 1.5, 0);
 
       // Enable shadows on all meshes
       lab.traverse((child) => {
