@@ -1056,9 +1056,15 @@ function checkForInteractables() {
         (target.userData && target.userData.isDoor) ||
         (target.name && target.name.toLowerCase().includes("door"));
 
+        /*
+      const requiredKey = getRequiredKeyFrom(target);
       interactionIndicator.textContent = isDoor
         ? `Press ${requiredKey} to open the door`
-        : `Press ${requiredKey} to interact`;
+        : `Press ${requiredKey} to interact`;*/
+
+        interactionIndicator.textContent = isDoor
+        ? `Press E to open the door`
+        : `Press E to interact`;
     }
     
     const s = worldToScreen(p);

@@ -93,14 +93,20 @@ export async function progressToLevel2(scene, gameController, camera) {
     console.log("[LevelLoader] Loading Level 2...");
     await loadLevel("level2", scene);
     currentLevel = "level2";
-    
+
+    if (gameController && typeof gameController.setLightingState === 'function')
+    {
+      gameController.setLightingState("dark");
+      console.log("[LevelLoader] Lighting set to dark mode for Level 2")
+   }
+
     // Reset player position for level 2
     if (camera) {
       camera.position.set(0, 1.7, -5);
-      camera.lookAt(0, 1.7, -10);
+      camera.lookAt(0, 1.7, 0);
       console.log("[LevelLoader] Player position reset for Level 2");
     }
-    
+
     // Ensure flashlight functionality is preserved in level 2
     if (gameController && gameController.lights && gameController.lights.flashlight) {
       // Re-attach flashlight to camera for level 2
