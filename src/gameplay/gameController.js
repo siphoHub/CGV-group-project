@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { HUD } from './hud.js';
 
 export class GameController {
-  constructor(scene, camera,lights, controls) {
+  constructor(scene, camera,lights, controls,initialLightingState='normal') {
     this.scene = scene;
     this.camera = camera;
     this.hud = new HUD();
@@ -11,6 +11,11 @@ export class GameController {
     this.flashlight = lights.flashlight;
     this.controls = controls;
     this.generatorActivated = false; // Track generator state
+
+    // remember last interacted T-door so you can close it even if not "nearest"
+    this._lastDoorT = null;
+
+    //this.addObjective("Turn on Power");
     this.powerTurnedOn = false; // Track power state for progressive objectives
     this.flashlightPickedUp = false; // Track flashlight pickup for progressive objectives
 
@@ -35,6 +40,15 @@ export class GameController {
 
     // Initialize lighting to normal state
     this.setLightingState('normal');
+
+    this.generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
+    this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
+
+    this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
+    this.scaryScreamSound.volume = 0.7; // Set volume to 70%
+
+    // Initialize lighting to normal state
+    this.setLightingState(initialLightingState);
 
     this.setupEventListeners();
   }
@@ -113,8 +127,18 @@ export class GameController {
         break;
 
       default:
-        // Handle generator object (only powerpulse1)
-        if (object.name === "powerpulse1") {
+        // Doors via E: only allow if door requires E; show hint if door requires T
+        if (object.userData?.toggleDoor && object.userData?.isDoor) {
+          const req = object.userData.requiredKey || "E";
+          if (req === "E") {
+            try { object.userData.toggleDoor(); } catch (e) { console.warn('[Door-E] toggleDoor error:', e); }
+          } else if (req === "T") {
+            this.hud?.showMessage?.("Press T to interact", 1200);
+            // remember it so KeyT can still close it even if not "nearest" later
+            this._lastDoorT = object;
+          }
+          break;
+        }
 
           // Only activate if generator hasn't been used before
           if (!this.generatorActivated) {
@@ -185,6 +209,11 @@ export class GameController {
 
       // Update intensity
       this.flashlight.intensity = Math.max(0.1, flashlightState.energy / 100);
+
+      if (this.lights.updateFlashlightBeam)
+      {
+        this.lights.updateFlashlightBeam();
+      }
     }
   }
 
@@ -225,6 +254,58 @@ export class GameController {
           });
         }
         break;
+
+      case 'flashing':
+        this.startRoomFlashing();
+        break;
+
+    }
+  }
+
+  dimSceneLights(dim=true){ this.setLightingState(dim ? 'dark' : 'normal'); }
+
+//flashing light code
+
+startRoomFlashing() {
+  if (!this.lights) return;
+  if (this.flashTimeout) clearTimeout(this.flashTimeout);
+
+  const flashOnDuration = 3000;  // 3 seconds on
+  const flashOffDuration = 2000; // 2 seconds off
+
+  const flashCycle = () => {
+    // Turn room lights ON
+    if (this.lights.hemi) this.lights.hemi.color.set(0xff0000); // red
+    if (this.lights.dirLight) this.lights.dirLight.color.set(0xff0000);
+    if (this.lights.hemi) this.lights.hemi.intensity = 0.8; // adjust as needed
+    if (this.lights.dirLight) this.lights.dirLight.intensity = 1.2;
+
+    // Schedule lights OFF
+    this.flashTimeout = setTimeout(() => {
+      if (this.lights.hemi) this.lights.hemi.intensity = 0;
+      if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
+
+      // Schedule next ON
+      this.flashTimeout = setTimeout(flashCycle, flashOffDuration);
+    }, flashOnDuration);
+  };
+
+  flashCycle(); // start the cycle
+}
+
+stopRoomFlashing() {
+  if (this.flashTimeout) {
+    clearTimeout(this.flashTimeout);
+    this.flashTimeout = null;
+  }
+
+  // Reset lights to OFF (or normal state if desired)
+  if (this.lights) {
+    if (this.lights.hemi) this.lights.hemi.intensity = 0;
+    if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
+  }
+}
+
     }
   }
 
@@ -390,7 +471,6 @@ export class GameController {
       this.hud.completeObjective(identifier);
     }
   }
-
   // Battery management methods
   setBatteryDrainTime(seconds) {
     this.hud.setBatteryDrainTime(seconds);
@@ -459,6 +539,9 @@ export class GameController {
   togglePause() {
     const isPaused = this.hud.togglePause();
     return isPaused;
+  }
+
+  togglePause() { return this.hud.togglePause(); }
   }
 
   // Get pause state
