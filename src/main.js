@@ -60,6 +60,7 @@ camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
 
 
+
 // --- Dev helpers (ignored by interaction) ---
 // Controls (we also grab setColliders)
 const { controls, update, setColliders } = createControls(camera, renderer.domElement);
