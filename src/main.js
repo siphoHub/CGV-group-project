@@ -880,17 +880,6 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
-// -------- NEW: robust requiredKey lookup up the parent chain --------
-function getRequiredKeyFrom(obj) {
-  let p = obj;
-  while (p) {
-    const k = p.userData && p.userData.requiredKey;
-    if (k === "T" || k === "E") return k;
-    p = p.parent;
-  }
-  return "E";
-}
-
 // Cache interactable objects to avoid scene traversal every frame
 let cachedInteractables = [];
 
@@ -1050,15 +1039,7 @@ function checkForInteractables() {
       }
     } else {
       p.y += 0.5; // Higher position for other objects
-
-      // Identify doors and show exact key they need
-      const isDoor =
-        (target.userData && target.userData.isDoor) ||
-        (target.name && target.name.toLowerCase().includes("door"));
-
-      interactionIndicator.textContent = isDoor
-        ? `Press ${requiredKey} to open the door`
-        : `Press ${requiredKey} to interact`;
+      interactionIndicator.textContent = "Press E to interact";
     }
     
     const s = worldToScreen(p);
