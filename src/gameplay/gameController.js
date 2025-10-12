@@ -39,15 +39,6 @@ export class GameController {
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
 
     // Initialize lighting to normal state
-    this.setLightingState('normal');
-
-    this.generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
-    this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
-
-    this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
-    this.scaryScreamSound.volume = 0.7; // Set volume to 70%
-
-    // Initialize lighting to normal state
     this.setLightingState(initialLightingState);
 
     this.setupEventListeners();
@@ -166,9 +157,8 @@ export class GameController {
               console.log(`[Generator] Emergency lights activated after delay: ${object.name}`);
             }, 3000); // 3 seconds delay
             
-            console.log(`[Generator] Generator started, emergency lights will activate in 3 seconds: ${object.name}`);
+              console.log(`[Generator] Generator started, emergency lights will activate in 3 seconds: ${object.name}`);
           }
-        }
         break;
     }
   }
@@ -305,10 +295,6 @@ stopRoomFlashing() {
     if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
   }
 }
-
-    }
-  }
-
   // Getter for flashlight state
   get hasFlashlight() {
     const flashlightState = this.hud.getFlashlightState();
@@ -322,10 +308,6 @@ stopRoomFlashing() {
   }
 
   //lights off when torch picked up (keeping old method for backwards compatibility)
-  dimSceneLights(dim=true)
-  {
-    this.setLightingState(dim ? 'dark' : 'normal');
-  }
 
   // Trigger generator and switch to emergency lighting
   triggerGenerator() {
@@ -541,8 +523,6 @@ stopRoomFlashing() {
     return isPaused;
   }
 
-  togglePause() { return this.hud.togglePause(); }
-  }
 
   // Get pause state
   isPaused() {

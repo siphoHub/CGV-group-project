@@ -17,19 +17,33 @@ export function isLevelTransitioning() {
 export function loadLevel(levelName, scene) {
   switch (levelName) {
     case "level1":
-      loadLevel1(scene);
-      break;
+      return loadLevel1(scene);
     case "level2":
-      loadLevel2(scene);
-      break;
+      return loadLevel2(scene);
     case "level3":
-      loadLevel3(scene);
-      break;    
+      return loadLevel3(scene);    
     default:
       console.warn(`Level ${levelName} not found`);
       return Promise.resolve();
   }
 }
+
+function waitForEventOnce(eventName, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const on = (e) => {
+      window.removeEventListener(eventName, on);
+      resolve(e);
+    };
+    window.addEventListener(eventName, on, { once: true });
+    if (timeoutMs > 0) {
+      setTimeout(() => {
+        window.removeEventListener(eventName, on);
+        reject(new Error(`Timed out waiting for ${eventName}`));
+      }, timeoutMs);
+    }
+  });
+}
+
 
 // Clear all level objects from scene while preserving UI, lights, and helpers
 function clearCurrentLevel(scene) {
@@ -132,21 +146,20 @@ export async function progressToLevel2(scene, gameController, camera) {
       }
     }
     
-    // Update collision detection for new level
-    setTimeout(() => {
-      if (window.updateInteractableCache) {
-        window.updateInteractableCache();
+    // Wait for level signals so we don't hide too early
+      try {
+        await waitForEventOnce("level:loaded", 10000);
+        await waitForEventOnce("level:colliders", 10000);
+      } catch (e) {
+        console.warn("[LevelLoader] Proceeding after event wait:", e.message);
       }
-    }, 100);
     
     console.log("[LevelLoader] Level 2 loading complete!");
     
-    // Hide loading screen only after everything is loaded
-    setTimeout(() => {
-      hideLoadingScreen();
-      isTransitioning = false;
-      console.log("[LevelLoader] Transition to Level 2 complete!");
-    }, 300); // Small delay to ensure everything is ready
+    // Hide loading screen now that assets + signals are in
+    hideLoadingScreen();
+    isTransitioning = false;
+    console.log("[LevelLoader] Transition to Level 2 complete!");
     
     return true;
     
