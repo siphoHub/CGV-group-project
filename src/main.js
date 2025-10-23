@@ -7,6 +7,9 @@ import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
 
+import { cutscene12 } from "./gameplay/cutscene12.js";    
+
+
 addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
     addDoorAtCrosshair();
@@ -712,20 +715,50 @@ function initializeGame(lights) {
         } else {
           console.log('[KeycardReader] No keycard in inventory');
         }
-      } else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
+      } 
+      else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
         // Check if flashlight has been obtained
         if (gameController && gameController.hasFlashlight) {
-          // Take elevator to level 2
-          console.log('[Elevator] Taking elevator to Level 2...');
-          progressToLevel2(scene, gameController, camera).then(success => {
-            if (success) {
-              console.log("[Elevator] Successfully progressed to Level 2");
+
+          //prevent double trigger
+          if (window._elevatorCutscenePlaying) return;
+          window._elevatorCutscenePlaying = true;
+
+          controls.unlock();
+
+          //play elevator cutscene and load level 2 in background
+          const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          elevatorCutscene.play(
+            () => {
+              console.log('[Elevator] Cutscene finished — progressing to Level 2...');
+
+
+              console.log('[Elevator] Taking elevator to Level 2...');
+                progressToLevel2(scene, gameController, camera).then(success => {
+                window._elevatorCutscenePlaying = false;
+
+                if (success) {
+                  console.log("[Elevator] Successfully progressed to Level 2");
+                };
+              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+            },
+            () => {
+              if (typeof loadLevelInBackground === 'function') {
+                loadLevelInBackground();
+              }
             }
-          });
+
+          );
+
+          // Take elevator to level 2
+         
+          
+          
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
-      } else {
+      } 
+      else {
         // Regular interaction
         gameController.handleInteraction(nearest);
       }
