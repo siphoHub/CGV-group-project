@@ -6,6 +6,7 @@ import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
+import { StartScreen } from "./gameplay/startScreen.js";
 
 addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
@@ -270,32 +271,38 @@ function playAccessDeniedSound() {
   accessDeniedSound.play().catch(err => console.log("Failed to play access denied sound:", err));
 }
 
-// --- Start Music ---
-startBackgroundMusic();
-
-// --- Cutscene + parallel level load ---
-const cutscene = new OpeningCutscene();
+let cutscene = null;
 let levelLoaded = false;
 let readyToInit = false;
+let hasGameStarted = false;
 
-// Start cutscene with parallel level loading
-cutscene.play(
-  // Callback when cutscene completes
-  () => {
-    // Stop cutscene music the moment cutscene finishes/skips
-
-    if (levelLoaded) {
-      initializeGame(lights);
-      fadeBackgroundMusic();
-    } else {
-      readyToInit = true; // Mark that we're ready to initialize when level loads
-    }
-  },
-  // Callback to start level loading during cutscene
-  () => {
-    loadLevelInBackground();
+function beginGameFlow() {
+  if (hasGameStarted) {
+    return;
   }
-);
+  hasGameStarted = true;
+
+  startBackgroundMusic();
+
+  cutscene = new OpeningCutscene();
+  levelLoaded = false;
+  readyToInit = false;
+
+  // Start cutscene with parallel level loading
+  cutscene.play(
+    () => {
+      if (levelLoaded) {
+        initializeGame(lights);
+        fadeBackgroundMusic();
+      } else {
+        readyToInit = true;
+      }
+    },
+    () => {
+      loadLevelInBackground();
+    }
+  );
+}
 
 let gameController;
 let lights;
@@ -1231,4 +1238,10 @@ function animate() {
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
+
+const startScreen = new StartScreen();
+startScreen.waitForStart().then(() => {
+  beginGameFlow();
+});
+
 requestAnimationFrame(animate);
