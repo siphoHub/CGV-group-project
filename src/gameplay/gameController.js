@@ -670,6 +670,8 @@ stopRoomFlashing() {
     }
 
     this.hud.showGameOverScreen();
+  setTimeout(() => {
     this.playScaryScream();
+  }, 300);
   }
 }
