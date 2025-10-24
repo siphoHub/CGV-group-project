@@ -17,9 +17,6 @@ dirLight.shadow.camera.near = 0.5;
 dirLight.shadow.camera.far = 50;
 scene.add(dirLight);
 
-// fog
-scene.fog = new THREE.FogExp2(0x000000, 0.01);
-
 const flashlight=new THREE.SpotLight(
     0xffffff,   //colour
     100,          //intensity (increased from 10 to 100)
@@ -42,13 +39,16 @@ const coneGeometry = new THREE.ConeGeometry(0.4, 2, 32, 1, true);
 const coneMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffaa,
     transparent: true,
-    opacity: 0.05,
+    opacity: 0.00,
     side: THREE.DoubleSide,
-    depthWrite: false
+    depthWrite: false,
+    depthTest: false
 });
 
 const lightCone = new THREE.Mesh(coneGeometry, coneMaterial);
 lightCone.rotation.x = -Math.PI / 2;
+lightCone.castShadow = false;
+lightCone.receiveShadow = false;
 flashlight.add(lightCone);
 
 function updateFlashlightBeam() {
