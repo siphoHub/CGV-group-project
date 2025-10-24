@@ -8,6 +8,7 @@ import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
 
 import { cutscene12 } from "./gameplay/cutscene12.js";    
+import { cutscene23 } from "./gameplay/cutscene23.js";
 
 
 addEventListener("keydown", (e) => {
@@ -244,11 +245,34 @@ const cutscene = new OpeningCutscene();
 let levelLoaded = false;
 let readyToInit = false;
 
+//schedule cutscene to to play and then 15seconds in, level must start loading
+let cutsceneLoadTimer = null;
+let levelLoadStarted = false;
+
+function startLevelLoad() {
+  if (levelLoadStarted) return;
+  levelLoadStarted = true;
+  console.log('[Main] Starting level load (triggered by cutscene timing)');
+  try {
+    loadLevelInBackground();
+  } catch (err) {
+    console.warn('[Main] loadLevelInBackground failed to start:', err);
+  }
+}
+
 // Start cutscene with parallel level loading
 cutscene.play(
   // Callback when cutscene completes
   () => {
     // Stop cutscene music the moment cutscene finishes/skips
+    if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
+    cutsceneLoadTimer = null;
+  }
+
+  if (!levelLoadStarted) {
+    startLevelLoad();}
+
 
     if (levelLoaded) {
       initializeGame(lights);
@@ -262,6 +286,15 @@ cutscene.play(
     loadLevelInBackground();
   }
 );
+
+cutsceneLoadTimer = setTimeout(() => {
+  cutsceneLoadTimer = null;
+  if (!levelLoadStarted) {
+    console.log('[Main] 15s elapsed during cutscene — starting level load now');
+    startLevelLoad();
+  }
+}, 15000);
+
 
 let gameController;
 let lights;
