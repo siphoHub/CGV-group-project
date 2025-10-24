@@ -19,10 +19,10 @@ scene.add(dirLight);
 
 const flashlight=new THREE.SpotLight(
     0xffffff,   //colour
-    100,          //intensity (increased from 10 to 100)
-    250,         //distance (increased from 100 to 250)
-    Math.PI/6,  //angle
-    0.3,        //edges
+    200,
+    400,
+    Math.PI/5,
+    0.3,
     1
     );
 flashlight.visible=false;
