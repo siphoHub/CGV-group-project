@@ -25,6 +25,7 @@ export class GameController {
     // Make sure generator is interactable from start
     this.ensureGeneratorInteractable();
 
+
     // Audio system for sound effects
     this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
     this.itemPickupSound.volume = 0.5; // Set volume to 50%
@@ -118,11 +119,28 @@ export class GameController {
         }, 500); // 0.5 seconds delay
         break;
 
-      case 'AA Battery.001':
+      case 'battery1':
+      case'battery2':
+      case'battery3.001':
+      case'battery3.002':
+      case'battery3.003':
+      case'battery3.004':
+      case'battery3.005':
+      case'battery3.006':
+      case'battery3.007':
+      case'battery3.008':
+      case'battery3.009':
+
+        this.playPickupSound();
+
         this.hud.onBatteryInteraction();
-        // Remove the battery from the scene (picked up)
-        this.scene.remove(object);
-        break;
+        const barsToAdd= 3;
+        this.hud.restoreBatteryLife(barsToAdd);
+
+        this.removeBattery(object);
+
+        console.log(`[Battery] Picked up ${object.name}, restored ${barsToAdd} battery bars`);
+
 
       default:
         // Doors via E: only allow if door requires E; show hint if door requires T
@@ -170,6 +188,26 @@ export class GameController {
     }
   }
 
+  removeBattery(object)
+  {
+    if (!object) return;
+
+    if (object.parent)
+    {
+      object.parent.remove(object);
+    }
+
+    if (object.userData.aura && object.parent)
+    {
+        object.parent.remove(object.userData.aura);
+    }
+
+    const interactionIndicator = document.getElementById('interaction-indicator');
+    if (interactionIndicator) {
+      interactionIndicator.style.display = 'none';
+    }
+    console.log('[Battery]  removed ${object.name} from scene after pickup');
+  }
   // Update the actual flashlight in the 3D scene
   updateFlashlightInScene(isOn) {
     const flashlightState = this.hud.getFlashlightState();
@@ -556,6 +594,7 @@ stopRoomFlashing() {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Level2 Objectives] Initialized with first objective: Find a clue to open office door');
+    
   }
 
   // Called when power is turned on (red lights appear)
@@ -656,6 +695,40 @@ stopRoomFlashing() {
         console.log('[Generator] Made generator interactable from start');
       }
     });
+  }
+
+  //batteries interactbale
+  enableBatteryInteraction() {
+    console.log('[Battery] Looking for batteries to enable...');
+    let batteryFound = false;
+
+    this.scene.traverse((child) => {
+      if (child.name.toLowerCase().includes('battery')) {
+        child.userData.interactable = true;
+        batteryFound = true;
+
+        const glow = new THREE.PointLight(0xffff00, 0.5, 2);
+        glow.position.copy(child.position);
+        child.userData.aura = glow;
+        if (child.parent)
+        {
+          child.parent.add(glow);
+        }
+        batteryFound=true;
+        console.log(`[Battery] Enabled interaction for ${child.name}`);
+      }
+    });
+
+    if (!batteryFound) {
+      console.log('[Battery] WARNING: No batteries found in scene!');
+    }
+
+    if (window.updateInteractableCache) {
+      console.log('[Battery] Refreshing interactable cache...');
+      window.updateInteractableCache();
+    } else {
+      console.log('[Battery] WARNING: updateInteractableCache not available!');
+    }
   }
 
   //game over

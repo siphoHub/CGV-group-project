@@ -641,9 +641,16 @@ export class HUD {
   }
 
   restoreBatteryLife(amount = this.maxBatteryLife) {
-    this.batteryLife = Math.min(this.maxBatteryLife, this.batteryLife + amount);
+    const oldLife = this.batteryLife;
+    const batteryLife=Math.min(this.maxBatteryLife, this.batteryLife + amount);
+    const actualAdd=this.batteryLife - oldLife;
+
+    if(actualAdd >0)
+    {
+      this._barAccum = 0;
+    }
+
     this.updateBatteryDisplay();
-    this.showMessage(amount >= this.maxBatteryLife ? 'Battery fully restored!' : `Battery +${amount} bars`, 1600);
   }
 
   // --- Pause Menu Methods ---
