@@ -118,338 +118,242 @@ export class HUD {
   }
 
   addStyles() {
+    // Remove any old HUD styles once (hot reload safety)
+    const old = document.getElementById('hud-theme-styles');
+    if (old) old.remove();
+
     const styles = document.createElement('style');
+    styles.id = 'hud-theme-styles';
     styles.textContent = `
-      #game-hud {
-        position: fixed; inset: 0; width: 100%; height: 100%;
-        pointer-events: none; z-index: 1000;
-        font-family: 'Courier New', monospace; color: #00ff00;
+      :root{
+        --hud-green:#7CFF7A;
+        --hud-amber:#FFC84A;
+        --hud-cyan:#94FFEC;
+        --hud-red:#FF3131;
+        --hud-fg:#e9f1ee;
+        --hud-dim:#a4b0b5;
+        --hud-bg:#050507;
+        --hud-panel:#0b0d11;
+        --hud-border:#1b1f26;
+        --hud-shadow:0 18px 60px rgba(0,0,0,.55);
       }
 
-      /* --- parchment objectives --- */
+      /* GLOBAL LAYER */
+      #game-hud{
+        position:fixed; inset:0; width:100%; height:100%;
+        pointer-events:none; z-index:1000;
+        color:var(--hud-fg);
+        font-family:"IBM Plex Mono","Courier New",monospace;
+        letter-spacing:.03em;
+      }
+      /* scanline + vignette for whole HUD */
+      #game-hud::before{
+        content:""; position:absolute; inset:0; pointer-events:none;
+        background:
+          radial-gradient(120% 120% at 50% 50%, transparent 60%, rgba(0,0,0,.9) 100%),
+          repeating-linear-gradient(180deg, rgba(255,255,255,.03) 0 2px, transparent 2px 4px);
+        mix-blend-mode: overlay; opacity:.2;
+        animation: hudFlicker 1.8s infinite;
+      }
+      @keyframes hudFlicker { 0%,100%{opacity:.18} 50%{opacity:.27} }
+
+      /* ===== OBJECTIVES (formerly "parchment") ===== */
       #objectives-panel.parchment{
-        position: absolute; top: 20px; left: 20px;
-        width: 360px; height: 240px;              /* keep ratio with your PNG */
-        background: url('/models/assets/ObjectivesPage.png') center/contain no-repeat; /* use the PNG with transparent edges */
-        filter: drop-shadow(0 6px 16px rgba(0,0,0,0.35));
-        transform: rotate(-1.2deg); transform-origin: top left; /* small diegetic tilt */
+        position:absolute; top:20px; left:20px;
+        width:min(380px, 34vw); min-height:180px;
+        background: linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%) , var(--hud-panel);
+        border:1px solid var(--hud-border);
+        border-radius:12px;
+        box-shadow: var(--hud-shadow), inset 0 0 0 1px rgba(255,255,255,.02);
+        transform: none; /* override old tilt */
+        filter:none;     /* override old drop-shadow line */
+        pointer-events:none;
       }
       .parchment-inner{
-        position: absolute; inset: 20px 26px 26px 26px;  /* inner safe area */
-        pointer-events: none; display: flex; flex-direction: column;
+        position:relative; inset:auto; padding:16px 18px 14px 18px;
+        display:flex; flex-direction:column; gap:6px;
       }
-      .parchment-inner h3{
-        margin: 0 0 8px 0; font: 700 18px 'Times New Roman', serif;
-        color: #2a1a0d; letter-spacing: 2px; text-align: center; text-transform: uppercase;
-        text-shadow: 0 1px 0 rgba(255,255,255,.25);
+      .parchment-inner::before{
+        content:"CLASS-Δ OBJECTIVES";
+        display:block; padding:6px 10px; margin:-4px 0 8px 0;
+        font-size:.82rem; font-weight:900; letter-spacing:.18em;
+        color:#121314; text-transform:uppercase;
+        background: linear-gradient(90deg, var(--hud-amber), #ff8359);
+        border-radius:4px; width:max-content; box-shadow:0 0 14px rgba(255,130,60,.25);
       }
-      .parchment-inner ul{ list-style:none; margin:0; padding:0; }
+      .parchment-inner h3 { display:none; } /* keep DOM but hide */
+      .parchment-inner ul{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
       .parchment-inner li{
-        color:#3a2a1b; font-size:16px; font-weight:bold; line-height:1.35; padding:4px 0; position:relative;
+        position:relative; padding-left:28px; color:var(--hud-fg); letter-spacing:.06em;
       }
-      .parchment-inner li::before{ content:"□ "; color:#3a2a1b; }
-      .parchment-inner li.completed{ color:#6b5a45; text-decoration:line-through; opacity:.85; }
-      .parchment-inner li.completed::before{ content:"☑ "; }
+      .parchment-inner li::before{
+        content:""; position:absolute; left:0; top:4px; width:14px; height:14px; border-radius:3px;
+        border:1px solid rgba(148,255,236,.5);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.02), 0 0 10px rgba(148,255,236,.25);
+      }
+      .parchment-inner li.completed{
+        color:var(--hud-dim); text-decoration:line-through;
+      }
+      .parchment-inner li.completed::before{
+        background:linear-gradient(180deg, var(--hud-green), #3fdc89);
+        border-color:transparent;
+        box-shadow:0 0 10px rgba(124,255,122,.45);
+      }
 
-      /* --- battery panel (combined flashlight functionality) --- */
-      #battery-life-panel {
-        position: absolute; right: 20px; top: 20px; background: rgba(15, 15, 15, 0.95);
-        padding: 12px; border: none; border-radius: 6px;
-        backdrop-filter: blur(2px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); min-width: 200px;
-        animation: horrorFlicker 4s infinite alternate;
-        transform: scale(1.0);
-        transform-origin: top right;
+      /* ===== FLASHLIGHT / BATTERY ===== */
+      #battery-life-panel{
+        position:absolute; right:20px; top:20px;
+        background: linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%) , var(--hud-panel);
+        border:1px solid var(--hud-border);
+        border-radius:12px; padding:14px;
+        min-width:220px; pointer-events:none;
+        box-shadow: var(--hud-shadow), inset 0 0 0 1px rgba(255,255,255,.02);
+        animation: smallFlicker 4s infinite ease-in-out;
       }
-      #battery-life-panel h4 {
-        margin: 0 0 12px 0; color: #bbb; font-size: 16.5px; text-align:center; letter-spacing:1px; text-transform:uppercase;
-        text-shadow: 0 0 6px rgba(187, 187, 187, 0.4);
+      @keyframes smallFlicker { 0%,92%{opacity:1} 96%{opacity:.86} 100%{opacity:.97} }
+      #battery-life-panel h4{
+        margin:0 0 10px 0; text-align:center; letter-spacing:.16em; text-transform:uppercase;
+        color:var(--hud-cyan); font-weight:900;
+        text-shadow:0 0 12px rgba(148,255,236,.35);
       }
-      @keyframes horrorFlicker {
-        0%, 90% { opacity: 1; }
-        95% { opacity: 0.8; }
-        97% { opacity: 1; }
-        100% { opacity: 0.9; }
-      }
-      #battery-bars{ display:flex; gap:3px; height:27px; }
+      #battery-bars-container{ background:#0f1216; border:1px solid var(--hud-border); border-radius:10px; padding:6px; }
+      #battery-bars{ display:grid; grid-template-columns: repeat(10, 1fr); gap:4px; height:20px; }
       .battery-bar{
-        flex:1; border: none; border-radius:3px; background:#2a2a2a;
-        transition: all 0.3s ease;
+        background:#1a2128; border-radius:4px; transition: all .25s ease;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
       }
       .battery-bar.active{
-        background: linear-gradient(180deg, #4a7a4a, #336633);
-        box-shadow: 0 0 4px rgba(74, 122, 74, 0.6);
+        background: linear-gradient(180deg, #19c37d, #0f8a58);
+        box-shadow: 0 0 8px rgba(25,195,125,.55);
       }
       .battery-bar.low-energy{
-        background:linear-gradient(180deg, #cc7700, #996600);
-        box-shadow:0 0 5px rgba(204, 119, 0, 0.5);
-        animation: lowEnergyPulse 2s infinite ease-in-out;
+        background: linear-gradient(180deg, #d98a1a, #926100);
+        box-shadow: 0 0 8px rgba(255,200,74,.45);
+        animation: barPulse 1.6s infinite ease-in-out;
       }
       .battery-bar.critical-energy{
-        background:linear-gradient(180deg, #cc4444, #994444);
-        animation: criticalPulse 0.8s infinite ease-in-out;
-        box-shadow: 0 0 8px rgba(204, 68, 68, 0.7);
+        background: linear-gradient(180deg, #ff3131, #a30c0c);
+        box-shadow: 0 0 10px rgba(255,49,49,.65);
+        animation: barPulseFast .8s infinite ease-in-out;
       }
-      @keyframes criticalPulse{
-        0%{opacity:1; transform: scale(1);}
-        50%{opacity:0.6; transform: scale(1.02);}
-        100%{opacity:1; transform: scale(1);}
-      }
-      @keyframes lowEnergyPulse{
-        0%{opacity:1;}
-        50%{opacity:0.75;}
-        100%{opacity:1;}
-      }
+      @keyframes barPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.25)} }
+      @keyframes barPulseFast { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.35)} }
+
       #battery-time-remaining{
-        text-align:center; font-size:18px; color:#bbb;
-        text-shadow: 0 0 4px rgba(187, 187, 187, 0.4);
+        margin-top:8px; text-align:center; color:var(--hud-dim);
+        font-weight:700; letter-spacing:.08em;
       }
-
-      #energy-bar-container{ display:flex; align-items:center; gap:10px; }
-      #energy-bar{
-        flex:1; height:16px; background:#2a2a2a; border: none; border-radius:10px; overflow:hidden;
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
-      }
-      #energy-fill{
-        height:100%;
-        background: linear-gradient(90deg, #cc4444, #cc7700, #4a7a4a);
-        width:100%; transition: width .15s linear;
-        box-shadow: 0 0 6px rgba(74, 122, 74, 0.4);
-      }
-      #energy-percentage{ font-size:18px; color:#bbb; min-width:54px; text-align:right; text-shadow: 0 0 4px rgba(187, 187, 187, 0.4); }
-      #flashlight-status{ text-align:center; font-size:18px; color:#666; margin-top:9px; }
-
-      /* inventory area styling */
-      #inventory-panel{
-        position:absolute; left:20px; bottom:20px; pointer-events:none;
-        background: rgba(15, 15, 15, 0.9);
-        padding: 15px;
-        border-radius: 9px;
-        min-width: 180px;
-      }
-      #inventory-panel h4 {
-        margin: 0 0 12px 0;
-        color: #bbb;
-        font-size: 17px;
-        text-align: center;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        text-shadow: 0 0 4px rgba(187, 187, 187, 0.3);
-      }
-      #inventory-items {
-        display: flex;
-        flex-direction: column;
-        gap: 9px;
-      }
-      .inventory-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 6px;
-        background: rgba(25, 25, 25, 0.8);
-        border-radius: 6px;
-      }
-      .inventory-icon {
-        width: 48px;
-        height: 48px;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .inventory-icon img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-      }
-      .inventory-label {
-        color: #999;
-        font-size: 17px;
-        flex: 1;
-      }
-      .battery-icon {
-        color: #666;
-        font-size: 8px;
-        line-height: 1;
-      }
-      .hidden { display: none !important; }
-      @keyframes horrorPulse{
-        0%{opacity:1; filter: brightness(1);}
-        50%{opacity:.6; filter: brightness(0.7);}
-        100%{opacity:1; filter: brightness(1);}
+      #flashlight-status{
+        margin-top:6px; text-align:center; color:#768087; font-size:.95rem;
       }
       .flashlight-on #flashlight-status{
-        color:#bbb; font-weight:bold;
-        text-shadow: 0 0 4px rgba(187, 187, 187, 0.5);
-      }
-      .flashlight-off #flashlight-status{ color:#777; }
-
-      /* --- Pause Menu --- */
-      #pause-menu {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0, 0, 0, 0.9);
-        backdrop-filter: blur(5px);
-        z-index: 2000;
-        pointer-events: all;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        color:var(--hud-cyan); text-shadow:0 0 10px rgba(148,255,236,.35);
+        font-weight:900;
       }
 
-      #pause-content {
-        background: rgba(15, 15, 15, 0.95);
-        border: 2px solid #444;
-        border-radius: 12px;
-        padding: 40px;
-        max-width: 800px;
-        width: 90%;
-        max-height: 80vh;
-        overflow-y: auto;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      /* ===== INVENTORY ===== */
+      #inventory-panel{
+        position:absolute; left:20px; bottom:20px; pointer-events:none;
+        background: linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%) , var(--hud-panel);
+        border:1px solid var(--hud-border);
+        border-radius:12px; padding:14px; min-width:220px;
+        box-shadow: var(--hud-shadow), inset 0 0 0 1px rgba(255,255,255,.02);
+      }
+      #inventory-panel h4{
+        margin:0 0 10px 0; text-align:center; letter-spacing:.16em; text-transform:uppercase;
+        color:var(--hud-amber); font-weight:900;
+        text-shadow:0 0 12px rgba(255,200,74,.35);
+      }
+      #inventory-items{ display:flex; flex-direction:column; gap:8px; }
+      .inventory-item{
+        display:flex; align-items:center; gap:12px; padding:8px 10px;
+        background:#0f1216; border:1px solid var(--hud-border); border-radius:8px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.02);
+      }
+      .inventory-icon{ width:44px; height:44px; display:grid; place-items:center; }
+      .inventory-label{ color:var(--hud-fg); opacity:.8; }
+
+      /* ===== TOAST / GAME MESSAGES ===== */
+      #game-messages{
+        position:absolute; bottom:22%; left:50%; transform:translateX(-50%);
+        pointer-events:none;
+      }
+      #game-messages #message-text{
+        padding:12px 18px; border-radius:10px;
+        background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 30%), #0d1411;
+        color:var(--hud-fg); border:1px solid rgba(124,255,122,.45);
+        text-shadow:0 1px 0 rgba(0,0,0,.9);
+        box-shadow:0 16px 40px rgba(0,0,0,.55), 0 0 18px rgba(124,255,122,.25);
+        animation: toastIn .18s ease-out;
+      }
+      @keyframes toastIn { from{ opacity:0; transform:translate(-50%, 8px)} to{opacity:1; transform:translate(-50%,0)} }
+
+      /* ===== PAUSE MENU ===== */
+      #pause-menu{
+        position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+        background: rgba(0,0,0,.86); backdrop-filter: blur(4px);
+        pointer-events:all; z-index:2000;
+      }
+      #pause-content{
+        background: linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%), var(--hud-panel);
+        border:1px solid var(--hud-border); border-radius:16px;
+        padding:28px; width:min(860px, 92%); max-height:80vh; overflow:auto;
+        box-shadow: var(--hud-shadow), inset 0 0 0 1px rgba(255,255,255,.02);
+      }
+      #pause-content h2{
+        margin:0 0 18px 0; text-align:center; font-weight:900; letter-spacing:.2em; color:#fff;
+        text-transform:uppercase; text-shadow:0 0 18px rgba(124,255,122,.25);
+      }
+      #pause-sections{ display:flex; gap:24px; margin:10px 0 14px 0; flex-wrap:wrap; }
+      #controls-section, #pause-objectives-section{ flex:1 1 320px; }
+
+      #pause-content h3{
+        margin:0 0 10px 0; font-weight:800; letter-spacing:.18em; text-transform:uppercase;
+        color:var(--hud-cyan); border-bottom:1px solid var(--hud-border); padding-bottom:8px;
+      }
+      .control-list{ display:grid; gap:8px; }
+      .control-item{ color:var(--hud-fg); opacity:.9; }
+      .key{
+        background:#0f1418; border:1px solid var(--hud-border); border-radius:6px;
+        padding:3px 8px; color:#fff; min-width:64px; text-align:center;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
       }
 
-      #pause-content h2 {
-        text-align: center;
-        color: #fff;
-        font-size: 2.5rem;
-        margin: 0 0 30px 0;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-        letter-spacing: 3px;
+      #pause-objectives-list{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+      #pause-objectives-list li{ position:relative; padding-left:26px; color:var(--hud-fg); }
+      #pause-objectives-list li::before{
+        content:""; position:absolute; left:0; top:4px; width:12px; height:12px; border-radius:3px;
+        border:1px solid rgba(148,255,236,.45);
+      }
+      #pause-objectives-list li.completed{
+        color:var(--hud-dim); text-decoration:line-through;
+      }
+      #pause-objectives-list li.completed::before{
+        background:linear-gradient(180deg, var(--hud-green), #3fdc89); border-color:transparent;
       }
 
-      #pause-sections {
-        display: flex;
-        gap: 40px;
-        margin-bottom: 30px;
+      #pause-footer{ text-align:center; padding-top:14px; border-top:1px solid var(--hud-border); }
+      #resume-button{
+        pointer-events:all; cursor:pointer;
+        background: linear-gradient(180deg, #0ef0951a, #0d1411);
+        border:1px solid rgba(124,255,122,.45);
+        color:var(--hud-fg); font-weight:800; letter-spacing:.14em; text-transform:uppercase;
+        padding:10px 16px; border-radius:10px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 26px rgba(0,0,0,.5);
+        transition: transform .08s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
       }
+      #resume-button:hover{ transform: translateY(-1px); box-shadow:0 12px 30px rgba(0,0,0,.55); }
+      #resume-button:active{ transform: translateY(0); }
 
-      #controls-section, #pause-objectives-section {
-        flex: 1;
-      }
+      /* UTILS */
+      .hidden{ display:none !important; }
 
-      #pause-content h3 {
-        color: #bbb;
-        font-size: 1.5rem;
-        margin: 0 0 15px 0;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        border-bottom: 2px solid #444;
-        padding-bottom: 8px;
-      }
-
-      .control-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .control-item {
-        color: #ccc;
-        font-size: 1.1rem;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-      }
-
-      .key {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid #555;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-weight: bold;
-        color: #fff;
-        min-width: 60px;
-        text-align: center;
-        font-size: 0.9rem;
-      }
-
-      #pause-objectives-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }
-
-      #pause-objectives-list li {
-        color: #ccc;
-        font-size: 1.1rem;
-        padding: 8px 0;
-        position: relative;
-        padding-left: 25px;
-      }
-
-      #pause-objectives-list li::before {
-        content: "□ ";
-        position: absolute;
-        left: 0;
-        color: #888;
-      }
-
-      #pause-objectives-list li.completed {
-        color: #888;
-        text-decoration: line-through;
-      }
-
-      #pause-objectives-list li.completed::before {
-        content: "☑ ";
-        color: #6a6;
-      }
-
-      #pause-footer {
-        text-align: center;
-        padding-top: 20px;
-        border-top: 1px solid #444;
-      }
-
-      #resume-button {
-        background: linear-gradient(135deg, #4a7c59, #3d6b47);
-        border: 2px solid #5a8c69;
-        border-radius: 8px;
-        padding: 12px 24px;
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: #fff;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      }
-
-      #resume-button:hover {
-        background: linear-gradient(135deg, #5a8c69, #4a7c59);
-        border-color: #6a9c79;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-      }
-
-      #resume-button:active {
-        transform: translateY(0);
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
-      }
-
-      #pause-footer p {
-        color: #aaa;
-        font-size: 1.2rem;
-        margin: 0;
-      }
-
-      @media (max-width: 768px) {
-        #pause-sections {
-          flex-direction: column;
-          gap: 25px;
-        }
-
-        #pause-content {
-          padding: 25px;
-        }
-
-        #pause-content h2 {
-          font-size: 2rem;
-        }
-      }
+      /* keep your older energy bar APIs if used elsewhere */
+      #energy-bar-container{ display:none; }
     `;
     document.head.appendChild(styles);
   }
+
 
   // ---------------- Objectives ----------------
   updateObjectivesDisplay() {
