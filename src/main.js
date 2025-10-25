@@ -816,7 +816,9 @@ function initializeGame(lights) {
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
-      } else {
+      }else if (nearest.userData.interactionType === 'map'){
+        //nothing yet
+      }else {
         // Regular interaction
         gameController.handleInteraction(nearest);
       }
