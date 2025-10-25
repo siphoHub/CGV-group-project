@@ -578,8 +578,6 @@ function initializeGame(lights) {
 
   document.body.appendChild(safeboxInterface);
 
-
-
       // --- Log viewer UI---
   (function createLogViewer() {
     const logViewer = document.createElement('div');
@@ -1045,7 +1043,9 @@ function initializeGame(lights) {
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
-      } 
+      }else if (nearest.userData.interactionType === 'map'){
+        //nothing yet
+      }
       else if (nearest.userData.interactionType === 'log'){
         // show associated log image overlay
         const logName = nearest.name || nearest.userData.logId || 'unknown_log';
