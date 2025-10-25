@@ -115,8 +115,52 @@ export default async function loadLevel2(scene) {
 
     scene.add(facility);
 
-    // Add Level 2 specific lighting
-    addLevel2Lighting(scene);
+    console.log('[Level2] Setting up battery interactables...');
+
+    const batteryNames = [
+      'battery1', 'battery2', 'battery3.001', 'battery3.002',
+      'battery3.003', 'battery3.004', 'battery3.005', 'battery3.006'
+    ];
+
+    let batteriesMarked = 0;
+
+    // First pass: exact name matches
+    facility.traverse((child) => {
+      if (batteryNames.includes(child.name)) {
+        child.userData.interactable = true;
+        child.userData.interactionType = 'battery';
+        batteriesMarked++;
+        console.log(`[Level2] ✅ Battery marked (exact): ${child.name}`);
+      }
+    });
+
+    facility.traverse((child) => {
+      if (child.name && !child.userData.interactable) {
+        const nameLower = child.name.toLowerCase();
+        if (nameLower.includes('battery') || nameLower.includes('batt')) {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'battery';
+          batteriesMarked++;
+          console.log(`[Level2] ✅ Battery marked (partial): ${child.name}`);
+        }
+      }
+    });
+
+    console.log(`[Level2] Total batteries marked: ${batteriesMarked}`);
+
+    // Debug: List all objects if no batteries found
+    if (batteriesMarked === 0) {
+      console.warn('[Level2] ⚠️ NO BATTERIES FOUND! Listing all objects:');
+      let count = 0;
+      facility.traverse((child) => {
+        if (child.name && count < 100) {
+          console.log(`  - ${child.name}`);
+          count++;
+        }
+      });
+    }
+
+
 
     // Add hinged door helper and create HingedDoor for supplyRoomdoor001 and other doors
     function computeHingePoint(node, side = 'right') {
