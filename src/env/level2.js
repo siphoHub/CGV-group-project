@@ -110,6 +110,15 @@ export default async function loadLevel2(scene) {
           child.userData.interactionType = 'keycard-reader';
           console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
+
+        //logs for level 2
+        if (child.name === 'testingRoom1_Log1' || child.name === 'testingRoom1_Log2' || child.name === 'testingRoom2_Log1' || child.name === 'testingRoom2_Log2' 
+          || child.name === 'office2_Log2' || child.name === 'office1_Log1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'log';
+          console.log(`[Level2] Marked ${child.name} as log`);
+        }
+
       }
     });
 
