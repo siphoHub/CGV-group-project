@@ -103,6 +103,7 @@ export class HUD {
 
           <div id="pause-footer">
             <button id="resume-button">▶️ RESUME GAME</button>
+            <button id="pause-exit-button">⏻ EXIT GAME</button>
           </div>
         </div>
       </div>
@@ -332,18 +333,34 @@ export class HUD {
         background:linear-gradient(180deg, var(--hud-green), #3fdc89); border-color:transparent;
       }
 
-      #pause-footer{ text-align:center; padding-top:14px; border-top:1px solid var(--hud-border); }
-      #resume-button{
+      #pause-footer{
+        display:flex;
+        justify-content:center;
+        gap:12px;
+        flex-wrap:wrap;
+        padding-top:14px;
+        border-top:1px solid var(--hud-border);
+      }
+      #resume-button,
+      #pause-exit-button{
         pointer-events:all; cursor:pointer;
-        background: linear-gradient(180deg, #0ef0951a, #0d1411);
         border:1px solid rgba(124,255,122,.45);
         color:var(--hud-fg); font-weight:800; letter-spacing:.14em; text-transform:uppercase;
         padding:10px 16px; border-radius:10px;
         box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 26px rgba(0,0,0,.5);
         transition: transform .08s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
       }
-      #resume-button:hover{ transform: translateY(-1px); box-shadow:0 12px 30px rgba(0,0,0,.55); }
-      #resume-button:active{ transform: translateY(0); }
+      #resume-button{
+        background: linear-gradient(180deg, #0ef0951a, #0d1411);
+      }
+      #pause-exit-button{
+        background: linear-gradient(180deg, rgba(255, 49, 49, 0.18), rgba(20, 6, 6, 0.9));
+        border-color: rgba(255, 49, 49, 0.55);
+      }
+      #resume-button:hover,
+      #pause-exit-button:hover{ transform: translateY(-1px); box-shadow:0 12px 30px rgba(0,0,0,.55); }
+      #resume-button:active,
+      #pause-exit-button:active{ transform: translateY(0); }
 
       /* UTILS */
       .hidden{ display:none !important; }
@@ -564,6 +581,16 @@ export class HUD {
     if (resumeButton) {
       resumeButton.addEventListener('click', () => {
         this.togglePause();
+      });
+    }
+
+    const exitButton = document.getElementById('pause-exit-button');
+    if (exitButton) {
+      exitButton.addEventListener('click', () => {
+        if (this.isPaused) {
+          this.togglePause();
+        }
+        window.dispatchEvent(new Event('credits:restart'));
       });
     }
   }
