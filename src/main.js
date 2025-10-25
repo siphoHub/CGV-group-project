@@ -8,6 +8,10 @@ import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
 import { StartScreen } from "./gameplay/startScreen.js";
 
+import { cutscene12 } from "./gameplay/cutscene12.js";    
+import { cutscene23 } from "./gameplay/cutscene23.js";
+
+
 addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
     addDoorAtCrosshair();
@@ -276,6 +280,34 @@ let levelLoaded = false;
 let readyToInit = false;
 let hasGameStarted = false;
 
+//schedule cutscene to to play and then 15seconds in, level must start loading
+let cutsceneLoadTimer = null;
+let levelLoadStarted = false;
+
+function startLevelLoad() {
+  if (levelLoadStarted) return;
+  levelLoadStarted = true;
+  console.log('[Main] Starting level load (triggered by cutscene timing)');
+  try {
+    loadLevelInBackground();
+  } catch (err) {
+    console.warn('[Main] loadLevelInBackground failed to start:', err);
+  }
+}
+
+// Start cutscene with parallel level loading
+cutscene.play(
+  // Callback when cutscene completes
+  () => {
+    // Stop cutscene music the moment cutscene finishes/skips
+    if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
+    cutsceneLoadTimer = null;
+  }
+
+  if (!levelLoadStarted) {
+    startLevelLoad();}
+
 function beginGameFlow() {
   if (hasGameStarted) {
     return;
@@ -303,6 +335,15 @@ function beginGameFlow() {
     }
   );
 }
+
+cutsceneLoadTimer = setTimeout(() => {
+  cutsceneLoadTimer = null;
+  if (!levelLoadStarted) {
+    console.log('[Main] 15s elapsed during cutscene — starting level load now');
+    startLevelLoad();
+  }
+}, 15000);
+
 
 let gameController;
 let lights;
@@ -359,59 +400,6 @@ function initializeGame(lights) {
     display:none;
   `;
   document.body.appendChild(interactionIndicator);
-
-
-
-
-   // --- MAP in inventory: HUD button + updater (behaves like keycard)
-  const mapHudBtn = document.createElement('button');
-  mapHudBtn.id = 'hud-map-btn';
-  mapHudBtn.title = 'Open Map';
-  mapHudBtn.textContent = 'MAP';
-
-  // Prefer inserting into game's HUD container (same place keycard/flashlight live).
-  // If gameController.hud.container is not present, fall back to fixed-left placement.
-  const _hudContainer = gameController?.hud?.container || null;
-
-  if (_hudContainer) {
-    // Small button style to match other HUD icons when appended into container
-    mapHudBtn.style.cssText = `
-      display: none; margin-left: 8px; padding: 6px 10px; min-width: 44px; height: 44px;
-      border-radius: 6px; border: none; background: rgba(20,20,30,0.9); color: #fff;
-      font-family: monospace; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
-      align-items: center; justify-content: center; display: none;
-    `;
-    _hudContainer.appendChild(mapHudBtn);
-  } else {
-    // Fallback: fixed-left as before
-    mapHudBtn.style.cssText = `
-      position: fixed; left: 16px; bottom: 65px; z-index: 1200;
-      width: 52px; height: 52px; border-radius: 8px; border: none;
-      background: rgba(20,20,30,0.9); color: #fff; font-family: monospace;
-      display: none; align-items: center; justify-content: center; cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
-    `;
-    document.body.appendChild(mapHudBtn);
-  }
-
-  mapHudBtn.addEventListener('click', () => {
-    if (typeof window.showMapImage === 'function') {
-      window.showMapImage('map');
-    }
-  });
-
-  function updateInventoryMapButton() {
-    const hasMap = !!(gameController && gameController.hud && gameController.hud.hasMap);
-    // Use inline-flex if inside HUD container so layout matches other icons
-    const visibleStyle = _hudContainer ? 'inline-flex' : 'flex';
-    mapHudBtn.style.display = hasMap ? visibleStyle : 'none';
-  }
-
-  // expose updater so other code can call it after giving the map
-  window.updateInventoryMapButton = updateInventoryMapButton;
-
-
-
 
   // Create keycode interface
   const keycodeInterface = document.createElement("div");
@@ -590,168 +578,159 @@ function initializeGame(lights) {
 
   document.body.appendChild(safeboxInterface);
 
-
-
-
-  //map interface functions
- (function createMapViewer() {
-  const mapViewer = document.createElement('div');
-  mapViewer.id = 'map-viewer';
-  mapViewer.style.cssText = `
-    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.92); z-index: 3000; padding: 30px; box-sizing: border-box;
-  `;
-  mapViewer.innerHTML = `
-    <div id="map-viewer-inner" style="max-width:1100px; width:100%; max-height:90%; overflow:hidden; background:#0b0b0b; border-radius:10px; padding:10px; box-shadow:0 10px 40px rgba(0,0,0,.8); display:flex; flex-direction:column;">
-      <div style="display:flex; justify-content:flex-end;">
-        <button id="map-close-btn" style="background:#c0392b; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;">Close</button>
-      </div>
-      <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:12px; padding:10px;">
-        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; max-width:920px;">
-          <img id="map-image" src="" alt="" style="width:100%; height:auto; display:block; border-radius:6px; background:#000; max-height:78vh; object-fit:contain;" />
-          <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
-            <p id="map-caption" style="color:#ddd; margin:0; font-family:monospace; font-size:14px;"></p>
-            <p id="map-pager" style="color:#bbb; margin:0; font-family:monospace; font-size:13px;"></p>
-          </div>
-          <div style="margin-top:8px; display:flex; gap:8px;">
-            <button id="map-prev-btn" style="background:#34495e;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">Prev</button>
-            <button id="map-next-btn" style="background:#34495e;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">Next</button>
-          </div>
+      // --- Log viewer UI---
+  (function createLogViewer() {
+    const logViewer = document.createElement('div');
+    logViewer.id = 'log-viewer';
+    logViewer.style.cssText = `
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.92); z-index: 3000; padding: 30px; box-sizing: border-box;
+    `;
+    logViewer.innerHTML = `
+      <div id="log-viewer-inner" style="max-width:1100px; width:100%; max-height:90%; overflow:hidden; background:#0b0b0b; border-radius:10px; padding:10px; box-shadow:0 10px 40px rgba(0,0,0,.8); display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:flex-end;">
+          <button id="log-close-btn" style="background:#c0392b; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;">Close</button>
         </div>
-       </div>
-    </div>
-  `;
-  document.body.appendChild(mapViewer);
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:12px; padding:10px;">
+          <button id="log-prev" aria-label="previous" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">◀</button>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; max-width:920px;">
+            <img id="log-image" src="" alt="" style="width:100%; height:auto; display:block; border-radius:6px; background:#000; max-height:78vh; object-fit:contain;" />
+            <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+              <p id="log-caption" style="color:#ddd; margin:0; font-family:monospace; font-size:14px;"></p>
+              <p id="log-pager" style="color:#bbb; margin:0; font-family:monospace; font-size:13px;"></p>
+            </div>
+          </div>
+          <button id="log-next" aria-label="next" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">▶</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(logViewer);
 
-  // // map object names (or ids) to arrays of image paths + caption
-  // // NOTE: keys are stored lowercase so lookup is case-insensitive.
-  // const MAP_IMAGE_MAP = {
-  //   'map': {
-  //     images: ['/models/assets/maps/mapL2.png'],
-  //     caption: 'Level 2 Map'
-  //   }
-  // };
+    // map object names (or ids) to arrays of image paths + caption
+    const LOG_IMAGE_MAP = {
+      'testingRoom1_Log1': {
+        images: ['/models/assets/logs/testingRoom1_Log1.png'
+        ],
+        caption: 'Log — Testing Room 1'
+      },
+      'testingRoom1_Log2': {
+        images: ['/models/assets/logs/testingRoom1_Log2.png'],
+        caption: 'Log — Testing Room 1 (2)'
+      },
+      'testingRoom2_Log1': {
+        images: ['/models/assets/logs/testingRoom2_Log1.png',
+          '/models/assets/logs/testingRoom2_Log2.png'
+        ],
+        caption: 'Log — Testing Room 2'
+      },
+      'testingRoom2_Log2': {
+        images: ['/models/assets/logs/testingRoom2_Log3.png'],
+        caption: 'Log — Testing Room 2 (2)'
+      },
+      
+      'office1_Log1': {
+        images: [
+          '/models/assets/logs/office1_Log1.png',
+          '/models/assets/logs/office1_Log2.png'
+        ],
+        caption: 'Notes'
+      },
+      'office2_Log2': {
+        images: ['/models/assets/logs/office2_Log1.png',
+          '/models/assets/logs/office2_Log2.png',
+          '/models/assets/logs/office2_Log3.png'
+        ],
+        caption: 'Office 2 Log'
+      }
+      // add more mappings as needed
+    };
 
-  // // Preload images
-  // Object.values(MAP_IMAGE_MAP).forEach(entry => {
-  //   entry.images.forEach(src => { const img = new Image(); img.src = src; });
-  // });
+    // Preload images
+    Object.values(LOG_IMAGE_MAP).forEach(entry => {
+      entry.images.forEach(src => { const img = new Image(); img.src = src; });
+    });
 
-    // Track current level name from events
-  let currentLevelName = null;
-  window.addEventListener('level:loaded', (e) => {
-    currentLevelName = (e.detail?.levelName || '').toLowerCase();
-  });
+    const viewerEl = document.getElementById('log-viewer');
+    const imgEl = document.getElementById('log-image');
+    const captionEl = document.getElementById('log-caption');
+    const pagerEl = document.getElementById('log-pager');
+    const closeBtn = document.getElementById('log-close-btn');
+    const prevBtn = document.getElementById('log-prev');
+    const nextBtn = document.getElementById('log-next');
 
-  // Preload both level maps
-  ['/models/assets/maps/mapL2.png', '/models/assets/maps/mapL3.png'].forEach(src => {
-    const img = new Image(); img.src = src;
-  });
+    let currentLogKey = null;
+    let currentIndex = 0;
+    let currentImages = [];
 
-  const viewerEl = document.getElementById('map-viewer');
-  const imgEl = document.getElementById('map-image');
-  const captionEl = document.getElementById('map-caption');
-  const pagerEl = document.getElementById('map-pager');
-  const closeBtn = document.getElementById('map-close-btn');
-  const prevBtn = document.getElementById('map-prev-btn');
-  const nextBtn = document.getElementById('map-next-btn');
-
-  let currentMapKey = null;
-  let currentIndex = 0;
-  let currentImages = [];
-
-  function updatePager() {
-    pagerEl.textContent = currentImages.length > 1 ? `${currentIndex + 1} / ${currentImages.length}` : '';
-    prevBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
-    nextBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
-  }
-
-  function showIndex(i) {
-    if (!currentImages || currentImages.length === 0) return;
-    currentIndex = (i + currentImages.length) % currentImages.length;
-    imgEl.src = currentImages[currentIndex];
-    imgEl.alt = `${currentMapKey} (${currentIndex + 1})`;
-    updatePager();
-  }
-
-  // function openMapViewer(key) {
-  //   const lookupKey = (key || '').toString().toLowerCase();
-  //   const entry = MAP_IMAGE_MAP[lookupKey] || null;
-  //   if (entry) {
-  //     currentMapKey = lookupKey;
-  //     currentImages = entry.images.slice();
-  //     captionEl.textContent = entry.caption || key;
-  //   } else {
-  //     // fallback
-  //     currentMapKey = lookupKey || key || 'unknown';
-  //     currentImages = ['/models/assets/logs/log_placeholder.png'];
-  //     captionEl.textContent = `Map: ${key}`;
-  //   }
-  //   showIndex(0);
-  //   viewerEl.style.display = 'flex';
-  //   document.addEventListener('keydown', keyNavHandler);
-  //   try { controls.unlock(); } catch {}
-  // }
-
-   function openMapViewer() {
-    // Choose map by current level (defaults to level2 if unknown)
-    const lvl = (currentLevelName || '').toLowerCase();
-    let images, caption;
-    if (lvl === 'level3') {
-      images = ['/models/assets/maps/mapL3.png'];
-      caption = 'Level 3 Map';
-      currentMapKey = 'level3';
-    } else {
-      images = ['/models/assets/maps/mapL2.png'];
-      caption = 'Level 2 Map';
-      currentMapKey = 'level2';
+    function updatePager() {
+      pagerEl.textContent = currentImages.length > 1 ? `${currentIndex + 1} / ${currentImages.length}` : '';
+      prevBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
+      nextBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
     }
-    currentImages = images.slice();
-    captionEl.textContent = caption;
-    showIndex(0);
-    viewerEl.style.display = 'flex';
-    document.addEventListener('keydown', keyNavHandler);
-    try { controls.unlock(); } catch {}
-  }
 
+    function showIndex(i) {
+      if (!currentImages || currentImages.length === 0) return;
+      currentIndex = (i + currentImages.length) % currentImages.length;
+      imgEl.src = currentImages[currentIndex];
+      imgEl.alt = `${currentLogKey} (${currentIndex + 1})`;
+      updatePager();
+    }
 
-  function closeMapViewer() {
-    viewerEl.style.display = 'none';
-    imgEl.src = '';
-    currentMapKey = null;
-    currentImages = [];
-    currentIndex = 0;
-    document.removeEventListener('keydown', keyNavHandler);
-    try { controls.lock(); } catch {}
-  }
+    function openLogViewer(key) {
+      const entry = LOG_IMAGE_MAP[key] || null;
+      if (entry) {
+        currentLogKey = key;
+        currentImages = entry.images.slice();
+        captionEl.textContent = entry.caption || key;
+      } else {
+        // fallback
+        currentLogKey = key;
+        currentImages = ['/models/assets/logs/log_placeholder.png'];
+        captionEl.textContent = `Log: ${key}`;
+      }
+      showIndex(0);
+      viewerEl.style.display = 'flex';
+      // allow keyboard navigation
+      document.addEventListener('keydown', keyNavHandler);
+      // Unlock controls so UI can receive clicks/keys
+      try { controls.unlock(); } catch {}
+    }
 
-  function keyNavHandler(e) {
-    if (e.key === 'ArrowRight' || e.key === 'd') { showIndex(currentIndex + 1); }
-    else if (e.key === 'ArrowLeft' || e.key === 'a') { showIndex(currentIndex - 1); }
-    else if (e.key === 'Escape') { closeMapViewer(); }
-  }
+    function closeLogViewer() {
+      viewerEl.style.display = 'none';
+      imgEl.src = '';
+      currentLogKey = null;
+      currentImages = [];
+      currentIndex = 0;
+      document.removeEventListener('keydown', keyNavHandler);
+      // Re-lock pointer
+      try { controls.lock(); } catch {}
+    }
 
-  prevBtn.addEventListener('click', () => showIndex(currentIndex - 1));
-  nextBtn.addEventListener('click', () => showIndex(currentIndex + 1));
-  closeBtn.addEventListener('click', closeMapViewer);
+    function prev() { showIndex(currentIndex - 1); }
+    function next() { showIndex(currentIndex + 1); }
 
-  viewerEl.addEventListener('click', (e) => {
-    if (e.target === viewerEl) closeMapViewer();
-  });
+    function keyNavHandler(e) {
+      if (viewerEl.style.display !== 'flex') return;
+      if (e.code === 'ArrowLeft') { e.preventDefault(); prev(); }
+      if (e.code === 'ArrowRight') { e.preventDefault(); next(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeLogViewer(); }
+    }
 
-  // expose helper globally so interaction code can call it
-  // window.showMapImage = function(name) {
-  //   openMapViewer(name);
-  // };
+    closeBtn.addEventListener('click', closeLogViewer);
+    prevBtn.addEventListener('click', prev);
+    nextBtn.addEventListener('click', next);
 
+    // click outside inner -> close
+    viewerEl.addEventListener('click', (e) => {
+      if (e.target === viewerEl) closeLogViewer();
+    });
 
-    window.showMapImage = function() {
-    openMapViewer();
-  };
-})();
-
-
-
+    // expose helper globally so interaction code can call it
+    window.showLogImage = function(name) {
+      openLogViewer(name);
+    };
+  })();
 
 
 
@@ -1022,100 +1001,64 @@ function initializeGame(lights) {
         } else {
           console.log('[KeycardReader] No keycard in inventory');
         }
-      } else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
+      } 
+      else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
         // Check if flashlight has been obtained
         if (gameController && gameController.hasFlashlight) {
-          // Take elevator to level 2
-          console.log('[Elevator] Taking elevator to Level 2...');
-          progressToLevel2(scene, gameController, camera).then(success => {
-            if (success) {
-              console.log("[Elevator] Successfully progressed to Level 2");
+
+          //prevent double trigger
+          if (window._elevatorCutscenePlaying) return;
+          window._elevatorCutscenePlaying = true;
+
+          controls.unlock();
+
+          //play elevator cutscene and load level 2 in background
+          const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          elevatorCutscene.play(
+            () => {
+              console.log('[Elevator] Cutscene finished — progressing to Level 2...');
+
+
+              console.log('[Elevator] Taking elevator to Level 2...');
+                progressToLevel2(scene, gameController, camera).then(success => {
+                window._elevatorCutscenePlaying = false;
+
+                if (success) {
+                  console.log("[Elevator] Successfully progressed to Level 2");
+                };
+              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+            },
+            () => {
+              if (typeof loadLevelInBackground === 'function') {
+                loadLevelInBackground();
+              }
             }
-          });
+
+          );
+
+          // Take elevator to level 2
+         
+          
+          
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
-      } 
-      else if (nearest.userData.interactionType === 'map'){
-        // map pickup / inventory behavior: mirror keycard flow
-        const mapName = nearest.name || nearest.userData.mapId || 'map';
-
-        // If player already has the map, open it from inventory
-        const hasMap = !!(gameController && gameController.hud && gameController.hud.hasMap);
-        if (hasMap) {
-          if (typeof window.showMapImage === 'function') window.showMapImage(mapName);
-          if (gameController && typeof gameController.onMapViewed === 'function') {
-            try { gameController.onMapViewed(mapName); } catch {}
-          }
-        } else {
-          // Acquire map into inventory (play pickup, set hud flag, call giveMap if implemented)
-          if (gameController && gameController.playPickupSound) gameController.playPickupSound();
-
-          if (gameController && typeof gameController.giveMap === 'function') {
-            try { gameController.giveMap(mapName); }
-            catch (err) { console.warn('[Map] giveMap() failed', err); }
-          } else {
-            // Fallback: set hud flag directly
-            if (!gameController) gameController = gameController || {};
-            gameController.hud = gameController.hud || {};
-            gameController.hud.hasMap = true;
-            console.log('[Map] Map added to HUD (fallback)');
-          }
-
-          // Mark the map object non-interactable and remove/hide it from the scene
-          try {
-            nearest.userData.interactable = false;
-
-            // Prefer hiding/removing a sensible container: if parent name suggests it's the map group, remove parent
-            let targetNode = nearest;
-            try {
-              const parentName = (nearest.parent && nearest.parent.name) ? nearest.parent.name.toLowerCase() : '';
-              if (parentName.includes('map') || parentName.includes('map_holder') || parentName.includes('mapgroup')) {
-                targetNode = nearest.parent;
-              }
-            } catch (e) { /* ignore */ }
-
-            // Hide and safely remove + dispose geometry/material to free memory
-            targetNode.traverse((n) => {
-              if (n.isMesh) {
-                try { n.visible = false; } catch (e) {}
-                try { n.userData.interactable = false; } catch (e) {}
-                try {
-                  if (n.geometry) { n.geometry.dispose(); }
-                  if (n.material) {
-                    if (Array.isArray(n.material)) n.material.forEach(m => m.dispose && m.dispose());
-                    else n.material.dispose && n.material.dispose();
-                  }
-                } catch (e) { /* disposal may fail in dev; ignore */ }
-              }
-            });
-            if (targetNode.parent) {
-              try { targetNode.parent.remove(targetNode); } catch (e) { /* ignore */ }
-            }
-
-            // Refresh interactable cache so prompt disappears immediately
-            if (typeof refreshInteractableCache === 'function') refreshInteractableCache();
-            // also schedule full cache update shortly after removal
-            if (typeof updateInteractableCache === 'function') setTimeout(updateInteractableCache, 50);
-
-          } catch (err) { console.warn('[Map] Error hiding/removing map object', err); }
-
-          // Update HUD button
-          if (typeof updateInventoryMapButton === 'function') updateInventoryMapButton();
-
-          // Optional feedback toast
-          const toast = document.createElement('div');
-          toast.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:10px 16px;border-radius:8px;font-family:monospace;z-index:1500;';
-          toast.textContent = 'Map added to inventory';
-          document.body.appendChild(toast);
-          setTimeout(()=>{ if (toast.parentNode) toast.parentNode.removeChild(toast); }, 1800);
-
-          // Notify gameController if it needs to handle progression
-          if (gameController && typeof gameController.onMapPickedUp === 'function') {
-            try { gameController.onMapPickedUp(mapName); } catch {}
-          }
-        }
+      }else if (nearest.userData.interactionType === 'map'){
+        //nothing yet
       }
+      else if (nearest.userData.interactionType === 'log'){
+        // show associated log image overlay
+        const logName = nearest.name || nearest.userData.logId || 'unknown_log';
+        if (typeof window.showLogImage === 'function') {
+          window.showLogImage(logName);
+        } else {
+          console.warn('[Log] No log viewer available for', logName);
+        }
+        // notify gameController if needed
+        if (gameController && typeof gameController.onLogViewed === 'function') {
+          try { gameController.onLogViewed(logName); } catch {}
+        }
+      } 
       else {
         // Regular interaction
         gameController.handleInteraction(nearest);
@@ -1406,6 +1349,7 @@ function checkForInteractables() {
     const isElevator = target.name === "Mesh_0001" && target.userData.interactionType === "elevator";
     const isDoor = target.userData.interactionType === "door";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
+    const isLog = target.name.includes("Log") && target.userData.interactionType === "log";
     
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
@@ -1449,7 +1393,11 @@ function checkForInteractables() {
       } else {
         interactionIndicator.textContent = "Flashlight required";
       }
-    } else {
+    } 
+    else if (isLog){
+      p.y += 0.5; // Higher position for logs
+      interactionIndicator.textContent = "Press E to read log";
+    }else {
       p.y += 0.5; // Higher position for other objects
       interactionIndicator.textContent = "Press E to interact";
     }
@@ -1538,6 +1486,10 @@ function animate() {
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
+
+window.addEventListener("credits:restart", () => {
+  window.location.reload();
+});
 
 const startScreen = new StartScreen();
 startScreen.waitForStart().then(() => {
