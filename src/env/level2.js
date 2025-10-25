@@ -110,6 +110,13 @@ export default async function loadLevel2(scene) {
           child.userData.interactionType = 'keycard-reader';
           console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
+
+        //mark level 2 map as interactable
+        if (child.name === 'map'){
+          child.userData.interactable = true;
+          child.userData.interactionType = 'map';
+          console.log(`[Level2] Marked ${child.name} as mapL2`);
+        }
       }
     });
 
