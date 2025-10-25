@@ -55,6 +55,27 @@ export default async function loadLevel3(scene) {
 
       scene.add(lab);
 
+      if (typeof window !== 'undefined') {
+        const bounds = new THREE.Box3().setFromObject(lab);
+        if (
+          Number.isFinite(bounds.min.x) && Number.isFinite(bounds.max.x) &&
+          Number.isFinite(bounds.min.z) && Number.isFinite(bounds.max.z)
+        ) {
+          const minimapDetail = {
+            level: 'level3',
+            min: { x: bounds.min.x, z: bounds.min.z },
+            max: { x: bounds.max.x, z: bounds.max.z },
+            flipY: true
+          };
+          window.__pendingMinimapDetail = minimapDetail;
+          window.dispatchEvent(new CustomEvent('minimap:configure', {
+            detail: minimapDetail
+          }));
+        } else {
+          console.warn('[Level3] Unable to compute minimap bounds for level 3');
+        }
+      }
+
       // --- Simple hinge helper and HingedDoor class (lightweight, per-level)
       // Robust hinge helper: compute hinge point using local geometry bbox when available,
       // fallback to world AABB, convert to parent-local, create pivot, and reparent preserving visual transform.
