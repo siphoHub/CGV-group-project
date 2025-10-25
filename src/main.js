@@ -88,6 +88,15 @@ window.addEventListener("level:loaded", (e) => {
   if (levelName === "level2" || levelName === 'level3') {
     console.log(`[main] ${levelName} loaded, initializing DoorManager...`);
     initializeDoorManager();
+    // If we loaded level3, enable the Screen001 interaction (mini-game)
+    if (levelName === 'level3' && typeof gameController !== 'undefined' && gameController) {
+      try {
+        gameController.enableScreenInteraction();
+        console.log('[main] Enabled Screen001 interaction for level3');
+      } catch (err) {
+        console.warn('[main] Failed to enable Screen001 interaction:', err);
+      }
+    }
   }
 });
 
@@ -722,11 +731,14 @@ function initializeGame(lights) {
     if (event.code !== interactKey || !controls.isLocked) return;
 
     let nearest = null;
-    let best = interactionDistance;
+    // Use Infinity so objects with larger allowed ranges (e.g. screens) can be selected
+    let best = Infinity;
     scene.traverse((obj) => {
       if (obj.userData?.interactable) {
         const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
-        if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
+        const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+        const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
+        if (d <= maxAllowed && d < best) { best = d; nearest = obj; }
       }
     });
     
@@ -1058,14 +1070,18 @@ function checkForInteractables() {
 
   const interactionDistance = 1.8;
   let target = null;
-  let best = interactionDistance;
+  // Use Infinity so per-object allowed distances (e.g. Screen001 = 2.0m) can exceed the default
+  let best = Infinity;
   let flashlightTaken = false;
 
   // Use cached interactables instead of scene.traverse
   for (const obj of cachedInteractables) {
     if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
     
-    const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+  const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+  // Per-object allowed interaction distance (special-case Screen001 / interactionType 'screen')
+  const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+  const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
 
     // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
@@ -1075,7 +1091,27 @@ function checkForInteractables() {
     }
 
     // Handle generators and other interactables (no aura effect for generators)
-    if (!flashlightTaken && d <= interactionDistance && d < best) { target = obj; best = d; }
+    if (!flashlightTaken && d <= maxAllowed && d < best) { target = obj; best = d; }
+  }
+
+  // Debug: throttle logs to avoid spamming
+  try {
+    const now = performance.now();
+    if (!window._screenDebugLast || (now - window._screenDebugLast) > 1000) {
+      window._screenDebugLast = now;
+      const screenObj = (window.cachedInteractables || []).find(o => o.name === 'Screen001' || o.userData?.interactionType === 'screen');
+      if (screenObj) {
+        const dist = camera.position.distanceTo(screenObj.getWorldPosition(new THREE.Vector3()));
+        if (dist <= interactionDistance) {
+          console.log(`[DEBUG] Screen001 nearby (dist=${dist.toFixed(2)}). interactable=${!!screenObj.userData?.interactable}, interactionType=${screenObj.userData?.interactionType}`);
+        } else {
+          // not within interaction distance but present in cache
+          console.log(`[DEBUG] Screen001 cached but far (dist=${dist.toFixed(2)}). interactable=${!!screenObj.userData?.interactable}`);
+        }
+      }
+    }
+  } catch {
+    // ignore debug errors
   }
   
   // Also check for keycard reader even if not marked as interactable
@@ -1087,13 +1123,27 @@ function checkForInteractables() {
   });
 
   if (target) {
+    // Debug: log when Screen001 becomes the selected target (throttled)
+    try {
+      if ((target.name === 'Screen001' || target.userData?.interactionType === 'screen')) {
+        const now2 = performance.now();
+        if (!window._screenSelectedLast || (now2 - window._screenSelectedLast) > 1000) {
+          window._screenSelectedLast = now2;
+          const distSel = camera.position.distanceTo(target.getWorldPosition(new THREE.Vector3()));
+          console.log(`[DEBUG] Screen001 selected as target (dist=${distSel.toFixed(2)}). Showing popup.
+  target.userData:`, target.userData);
+        }
+      }
+  } catch { /* ignore */ }
     interactionIndicator.style.display = "block";
     const p = target.getWorldPosition(new THREE.Vector3()); 
     
     // Check if target is a generator to customize the prompt
     const isGenerator = target.name === "powerpulse1";
     const isKeycodTerminal = target.name === "Object_7" && target.userData.interactionType === "keycode";
-    const isComputer = target.name === "defaultMaterial001_1" && target.userData.interactionType === "computer";
+  const isComputer = target.name === "defaultMaterial001_1" && target.userData.interactionType === "computer";
+  // Screen support: named Screen001 or any object explicitly marked as 'screen'
+  const isScreen = target.name === 'Screen001' || target.userData.interactionType === 'screen';
     const isNote = target.name === "office2_Log1" && target.userData.interactionType === "note";
     const isSafeBox = target.name === "Cube014_1" && target.userData.interactionType === "safebox";
     const isElevator = target.name === "Mesh_0001" && target.userData.interactionType === "elevator";
@@ -1109,6 +1159,9 @@ function checkForInteractables() {
     } else if (isComputer) {
       p.y += 0.5; // Higher position for computer
       interactionIndicator.textContent = "Press E to use Computer";
+    } else if (isScreen) {
+      p.y += 0.5; // Higher position for screen
+      interactionIndicator.textContent = "Press E to Play";
     } else if (isNote) {
       p.y += 0.5; // Higher position for note
       interactionIndicator.textContent = "Press E to read note";
