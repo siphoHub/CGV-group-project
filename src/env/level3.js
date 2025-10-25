@@ -49,6 +49,12 @@ export default async function loadLevel3(scene) {
               child.userData.locked = !!child.userData.locked;
               console.log('[Level3] Marked supplyRoomdoor001 as interactable door');
             }
+            //mark level 3 map as interactable
+            if (child.name === 'map'){
+              child.userData.interactable = true;
+              child.userData.interactionType = 'map';
+              console.log(`[Level3] Marked ${child.name} as mapL3`);
+            }
           }
         }
       });
