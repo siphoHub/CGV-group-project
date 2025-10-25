@@ -1,3 +1,5 @@
+import { showCreditsOverlay } from "./credits.js";
+
 export class StartScreen {
   constructor() {
     this.root = document.createElement("div");
@@ -98,7 +100,6 @@ export class StartScreen {
     this.controlsBtn.addEventListener("click", this.toggleControls);
     this.controlsClose.addEventListener("click", this.closeControls);
 
-    // Placeholder: you’ll wire this to your end-credits cutscene
     this.creditsBtn.addEventListener("click", this.handleCredits);
 
     this.startButton.focus();
@@ -355,10 +356,19 @@ export class StartScreen {
   }
 
   handleCredits() {
-    // Visual feedback only; you’ll hook this to your end-credits cutscene.
-    this.flashBadge("RUNNING CREDITS…", 1400);
-    // e.g. later:
-    // runEndCredits().then(() => new StartScreen());
+    if (this.creditsBtn.disabled) return;
+    this.creditsBtn.disabled = true;
+
+    showCreditsOverlay({
+      onClose: () => {
+        this.creditsBtn.disabled = false;
+        if (!this.hasStarted) {
+          this.startButton.focus();
+        }
+      }
+    }).finally(() => {
+      this.creditsBtn.disabled = false;
+    });
   }
 
   flashBadge(text, ms=1200){

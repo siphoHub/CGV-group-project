@@ -1239,6 +1239,10 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
+window.addEventListener("credits:restart", () => {
+  window.location.reload();
+});
+
 const startScreen = new StartScreen();
 startScreen.waitForStart().then(() => {
   beginGameFlow();

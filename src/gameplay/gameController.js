@@ -1,6 +1,7 @@
 // Game Controller to manage HUD and game state
 import * as THREE from 'three';
 import { HUD } from './hud.js';
+import { showCreditsOverlay } from './credits.js';
 
 export class GameController {
   constructor(scene, camera,lights, controls,initialLightingState='normal') {
@@ -487,6 +488,7 @@ stopRoomFlashing() {
       this.hud.completeObjective(identifier);
     }
   }
+
   // Battery management methods
   setBatteryDrainTime(seconds) {
     this.hud.setBatteryDrainTime(seconds);
@@ -684,6 +686,23 @@ stopRoomFlashing() {
         console.log('[Generator] Made generator interactable from start');
       }
     });
+  }
+
+  onLevel3ExitReached() {
+    // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
+    this.completeObjective(1);
+    this.showEndCredits();
+    console.log('[Level3] Exit reached – rolling credits');
+  }
+
+  showEndCredits() {
+    try {
+      this.controls?.unlock();
+    } catch (err) {
+      console.warn('[GameController] Failed to unlock controls before credits:', err);
+    }
+
+    showCreditsOverlay({ restartOnFinish: true });
   }
 
   //game over
