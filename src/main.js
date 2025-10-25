@@ -244,6 +244,21 @@ function toggleBackgroundMusic() {
   }
 }
 
+function updateCoordinateHud() {
+  if (!coordHud || !coordHudVisible || !camera) return;
+  const pos = camera.position;
+  coordHud.textContent = `X: ${pos.x.toFixed(2)} | Y: ${pos.y.toFixed(2)} | Z: ${pos.z.toFixed(2)}`;
+}
+
+function toggleCoordinateHud() {
+  if (!coordHud) return;
+  coordHudVisible = !coordHudVisible;
+  coordHud.style.display = coordHudVisible ? 'block' : 'none';
+  if (coordHudVisible) {
+    updateCoordinateHud();
+  }
+}
+
 // --- Keycode Sound Effects ---
 let accessGrantedSound = null;
 let accessDeniedSound = null;
@@ -336,6 +351,8 @@ async function loadLevelInBackground() {
 }
 // --- Game init (HUD + interaction loop) --
 let interactionIndicator;
+let coordHud;
+let coordHudVisible = false;
 
 function initializeGame(lights) {
   // place player at spawn (you can tune this)
@@ -345,7 +362,8 @@ function initializeGame(lights) {
   console.log('[Game] Game initialized, DoorManager will be set up when Level 2 loads');
 
   document.addEventListener("keydown", (e) => { 
-    if (e.code === "KeyM") toggleBackgroundMusic(); 
+    if (e.code === "KeyM") toggleBackgroundMusic();
+    if (e.code === "KeyV") toggleCoordinateHud();
   });
 
   // interaction indicator UI
@@ -359,6 +377,18 @@ function initializeGame(lights) {
     display:none;
   `;
   document.body.appendChild(interactionIndicator);
+
+  if (!coordHud) {
+    coordHud = document.createElement('div');
+    coordHud.id = 'coord-hud';
+    coordHud.style.cssText = `
+      position: fixed; right: 16px; top: 16px; padding: 8px 12px;
+      background: rgba(20, 20, 30, 0.85); color: #0ff; font-family: monospace;
+      font-size: 13px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      display: none; pointer-events: none; z-index: 1300; letter-spacing: 0.5px;
+    `;
+    document.body.appendChild(coordHud);
+  }
 
   // Create keycode interface
   const keycodeInterface = document.createElement("div");
@@ -828,8 +858,8 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(0, 1.7, -5);
-  camera.lookAt(0, 1.7, 0);
+  camera.position.set(5.76, 1.7, -1.07);
+  camera.lookAt(-5.25, 1.7, -1.07);
   console.log('[reset] Player position reset');
 }
 
@@ -1235,6 +1265,10 @@ function animate() {
     if (frameCount % checkInterval === 0) {
       checkForInteractables();                  // proximity UI
     }
+  }
+
+  if (coordHudVisible && coordHud) {
+    updateCoordinateHud();
   }
 
   renderer.render(scene, camera);

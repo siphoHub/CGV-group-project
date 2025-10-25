@@ -401,6 +401,9 @@ export class HUD {
         filter: saturate(0.9);
         pointer-events:none;
       }
+      .hud-minimap.mirrored-y img{
+        transform: scaleY(-1);
+      }
       #hud-minimap-arrow{
         position:absolute;
         top:50%;
@@ -698,6 +701,11 @@ export class HUD {
     const scaleZ = detail.scale?.z ?? 1;
     const offsetX = detail.offset?.x ?? 0;
     const offsetZ = detail.offset?.z ?? 0;
+    const imageScaleX = detail.imageScale?.x ?? 1;
+    const imageScaleY = detail.imageScale?.y ?? 1;
+    const imageOffsetX = detail.imageOffset?.x ?? 0;
+    const imageOffsetY = detail.imageOffset?.y ?? 0;
+    const mirrorY = Boolean(detail.mirrorY);
 
     const minRawX = min.x ?? 0;
     const minRawZ = min.z ?? 0;
@@ -719,11 +727,17 @@ export class HUD {
       scaleX,
       scaleZ,
       offsetX,
-      offsetZ
+      offsetZ,
+      imageScaleX,
+      imageScaleY,
+      imageOffsetX,
+      imageOffsetY,
+      mirrorY
     };
 
     this.minimapContainer.classList.remove('hidden');
     this.minimapContainer.setAttribute('aria-hidden', 'false');
+    this.minimapContainer.classList.toggle('mirrored-y', mirrorY);
 
     if (typeof window !== 'undefined') {
       window.__pendingMinimapDetail = {
@@ -732,7 +746,10 @@ export class HUD {
         max: { x: maxRawX, z: maxRawZ },
         flipY: detail.flipY !== false,
         scale: { x: scaleX, z: scaleZ },
-        offset: { x: offsetX, z: offsetZ }
+        offset: { x: offsetX, z: offsetZ },
+        imageScale: { x: imageScaleX, y: imageScaleY },
+        imageOffset: { x: imageOffsetX, y: imageOffsetY },
+        mirrorY
       };
       window.__activeMinimapConfig = this.minimapConfig;
     }
@@ -743,6 +760,7 @@ export class HUD {
     if (this.minimapContainer) {
       this.minimapContainer.classList.add('hidden');
       this.minimapContainer.setAttribute('aria-hidden', 'true');
+      this.minimapContainer.classList.remove('mirrored-y');
     }
     if (typeof window !== 'undefined') {
       window.__pendingMinimapDetail = null;
@@ -753,7 +771,22 @@ export class HUD {
   updateMinimap(position, direction) {
     if (!this.minimapConfig || !this.minimapArrow || !this.minimapContainer || !position) return;
 
-    const { minX, maxX, minZ, maxZ, flipY, scaleX, scaleZ, offsetX, offsetZ } = this.minimapConfig;
+    const {
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      flipY,
+      scaleX,
+      scaleZ,
+      offsetX,
+      offsetZ,
+      imageScaleX,
+      imageScaleY,
+      imageOffsetX,
+      imageOffsetY,
+      mirrorY
+    } = this.minimapConfig;
     const width = this.minimapContainer.clientWidth || 1;
     const height = this.minimapContainer.clientHeight || 1;
 
@@ -766,15 +799,16 @@ export class HUD {
     const normX = Math.min(Math.max((mappedX - minX) / rangeX, 0), 1);
     const normZ = Math.min(Math.max((mappedZ - minZ) / rangeZ, 0), 1);
 
-    const px = normX * width;
+    const px = (imageOffsetX + normX * imageScaleX) * width;
     const zNorm = flipY ? 1 - normZ : normZ;
-    const py = zNorm * height;
+    const displayZ = mirrorY ? 1 - zNorm : zNorm;
+    const py = (imageOffsetY + displayZ * imageScaleY) * height;
 
     this.minimapArrow.style.left = `${px}px`;
     this.minimapArrow.style.top = `${py}px`;
 
     if (direction) {
-      const angleRad = Math.atan2(direction.x, -direction.z);
+      const angleRad = Math.atan2(direction.x, mirrorY ? -direction.z : direction.z);
       const angleDeg = angleRad * (180 / Math.PI);
       this.minimapArrow.style.transform = `translate(-50%, -50%) rotate(${angleDeg.toFixed(1)}deg)`;
     }

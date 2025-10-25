@@ -67,11 +67,16 @@ export default async function loadLevel3(scene) {
           Number.isFinite(bounds.min.x) && Number.isFinite(bounds.max.x) &&
           Number.isFinite(bounds.min.z) && Number.isFinite(bounds.max.z)
         ) {
+          const mapContentScale = 400 / 512;
+          const mapContentOffset = (1 - mapContentScale) / 2;
           const minimapDetail = {
             level: 'level3',
             min: { x: bounds.min.x, z: bounds.min.z },
             max: { x: bounds.max.x, z: bounds.max.z },
-            flipY: true
+            flipY: true,
+            mirrorY: true,
+            imageScale: { x: mapContentScale, y: mapContentScale },
+            imageOffset: { x: mapContentOffset, y: mapContentOffset }
           };
           window.__pendingMinimapDetail = minimapDetail;
           window.dispatchEvent(new CustomEvent('minimap:configure', {
