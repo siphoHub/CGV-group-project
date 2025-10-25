@@ -1,4 +1,5 @@
 //levelloader
+import * as THREE from "three";
 import loadLevel1 from "../env/level1.js";
 import loadLevel3 from "../env/level3.js";
 import loadLevel2 from "../env/level2.js";
@@ -97,8 +98,8 @@ export async function progressToLevel2(scene, gameController, camera) {
   console.log("[LevelLoader] Starting transition to Level 2...");
   isTransitioning = true;
   
-  // Show loading screen
-  showLoadingScreen();
+  // Show loading screen (custom message for Level 2)
+  showLoadingScreen("Entering Level 2...");
   
   try {
     // Clear current level
@@ -123,7 +124,8 @@ export async function progressToLevel2(scene, gameController, camera) {
     // Reset player position for level 2
     if (camera) {
       camera.position.set(0, 1.7, -5);
-      camera.lookAt(0, 1.7, 0);
+      // Face the opposite direction compared to previous behaviour
+      camera.lookAt(0, 1.7, -10);
       console.log("[LevelLoader] Player position reset for Level 2");
     }
 
@@ -171,8 +173,168 @@ export async function progressToLevel2(scene, gameController, camera) {
   }
 }
 
+// Generic transition helper: show loading, clear current level, load target, wait for signals
+export async function transitionToLevel(levelName, scene, gameController, camera, message) {
+  if (isTransitioning) return false;
+  console.log(`[LevelLoader] Starting transition to ${levelName}...`);
+  isTransitioning = true;
+
+  showLoadingScreen(message || 'LOADING...');
+
+  try {
+    clearCurrentLevel(scene);
+
+    if (window.cachedInteractables) window.cachedInteractables = [];
+
+    // Start waiting for events *before* we call loadLevel so we don't miss events emitted during loading
+    const pColliders = waitForEventOnce('level:colliders', 10000).catch(e => { console.warn('[LevelLoader] level:colliders wait failed:', e.message); return null; });
+    const pLoaded = waitForEventOnce('level:loaded', 10000).catch(e => { console.warn('[LevelLoader] level:loaded wait failed:', e.message); return null; });
+
+    await loadLevel(levelName, scene);
+    currentLevel = levelName;
+
+    // Await colliders/loaded promises which were registered before loading started
+    let collidersDetail = null;
+    let rayTargetsDetail = null;
+    try {
+      const collidersEvent = await pColliders;
+      collidersDetail = collidersEvent?.detail?.colliders || null;
+      rayTargetsDetail = collidersEvent?.detail?.rayTargets || null;
+    } catch (e) {
+      console.warn('[LevelLoader] level:colliders event handling error:', e.message);
+    }
+
+    // Default camera reset for new levels (can be overridden by specific levels)
+    if (camera) {
+      if (levelName === 'level3') {
+        // If colliders are available, pick the best floor-like collider to spawn above it
+        let placed = false;
+        // Try to find a named spawn marker first (highest priority)
+        try {
+          const findByName = (root, name) => {
+            if (!root) return null;
+            let n = root.getObjectByName && root.getObjectByName(name);
+            if (n) return n;
+            const want = name.toLowerCase();
+            let best = null;
+            root.traverse(o => {
+              if (!o.name) return;
+              if (o.name.toLowerCase() === want) best = best || o;
+            });
+            if (best) return best;
+            root.traverse(o => {
+              if (!o.name) return;
+              if (o.name.toLowerCase().includes(want)) best = best || o;
+            });
+            return best;
+          };
+
+          const spawnNodeTop = findByName(scene, 'Cube_Door_0') || findByName(scene, 'cube_door_0') || findByName(scene, 'cube door');
+          if (spawnNodeTop) {
+            const worldPos = spawnNodeTop.getWorldPosition(new THREE.Vector3());
+            const eyeOffset = 1.7;
+            camera.position.set(worldPos.x-1, worldPos.y + eyeOffset + 0.1, worldPos.z);
+            camera.lookAt(-worldPos.x, worldPos.y + 1.0, worldPos.z);
+            placed = true;
+            console.log('[LevelLoader] Spawned at Cube_Door_0 (preferred) world position:', camera.position.toArray());
+          }
+        } catch (err) {
+          console.warn('[LevelLoader] Error while checking preferred Cube_Door_0 spawn node:', err && err.message);
+        }
+        try {
+          if (!placed && collidersDetail && Array.isArray(collidersDetail) && collidersDetail.length > 0) {
+            // Prefer lowest large flat collider (likely the ground) to avoid roofs.
+            let candidate = null;
+            let lowestTopY = Infinity;
+            const sizeVec = new THREE.Vector3();
+            const centerVec = new THREE.Vector3();
+            for (const c of collidersDetail) {
+              if (!c || typeof c.getSize !== 'function' || typeof c.getCenter !== 'function') continue;
+              c.getSize(sizeVec);
+              // ignore very thin or tiny colliders
+              const areaXZ = Math.abs(sizeVec.x * sizeVec.z);
+              const height = Math.abs(sizeVec.y);
+              if (areaXZ < 0.5) continue; // too small to be a floor
+              // compute top Y of the collider
+              c.getCenter(centerVec);
+              const topY = centerVec.y + (sizeVec.y / 2);
+              // prefer colliders that are relatively flat (not tall) and have low topY
+              const heightPenalty = Math.max(0, height - 1.5); // penalize tall blocks (walls/roofs)
+              const effectiveTop = topY + heightPenalty;
+              if (effectiveTop < lowestTopY) {
+                lowestTopY = effectiveTop;
+                candidate = { box: c, size: sizeVec.clone(), center: centerVec.clone(), topY };
+              }
+            }
+
+            if (candidate && candidate.box) {
+              try {
+                // If rayTargets were provided by the level, raycast down to find the actual surface under the candidate
+                let groundY = candidate.topY;
+                if (rayTargetsDetail && Array.isArray(rayTargetsDetail) && rayTargetsDetail.length > 0) {
+                  const rc = new THREE.Raycaster();
+                  const origin = new THREE.Vector3(candidate.center.x, candidate.topY + 10.0, candidate.center.z);
+                  const dir = new THREE.Vector3(0, -1, 0);
+                  rc.set(origin, dir);
+                  const hits = rc.intersectObjects(rayTargetsDetail, true);
+                  if (hits && hits.length > 0) {
+                    groundY = hits[0].point.y;
+                    console.log('[LevelLoader] Raycast snapped to ground at y=', groundY, 'hit=', hits[0].object.name || hits[0].object.id);
+                  } else {
+                    console.log('[LevelLoader] Raycast found no hits; using collider topY=', candidate.topY);
+                  }
+                }
+
+                const eyeOffset = 1.7;
+                const cameraY = groundY + eyeOffset + 0.1;
+                camera.position.set(candidate.center.x, cameraY, candidate.center.z);
+                camera.lookAt(candidate.center.x, groundY + 1.0, candidate.center.z);
+                placed = true;
+                console.log('[LevelLoader] Placed camera at', camera.position.toArray(), 'groundY=', groundY);
+              } catch (err) {
+                console.warn('[LevelLoader] error during raycast spawn snap:', err);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[LevelLoader] Error computing collider spawn:', err);
+        }
+
+        if (!placed) {
+          // fallback spawn if colliders and preferred spawn marker are unavailable
+          camera.position.set(-15, 3, 0);
+          camera.lookAt(0, 1.7, 0);
+          console.log('[LevelLoader] Fallback Level3 spawn used');
+        }
+        
+      } else {
+        camera.position.set(0, 1.7, -5);
+        camera.lookAt(0, 1.7, -10);
+      }
+      console.log(`[LevelLoader] Player position reset for ${levelName}`);
+    }
+
+    // Wait for level:loaded as final signal (colliders already handled above)
+    try {
+      await pLoaded;
+    } catch (e) {
+      console.warn('[LevelLoader] level:loaded not received in time:', e.message);
+    }
+
+    console.log(`[LevelLoader] ${levelName} loading complete!`);
+    hideLoadingScreen();
+    isTransitioning = false;
+    return true;
+  } catch (err) {
+    console.error('[LevelLoader] Error during generic level transition:', err);
+    hideLoadingScreen();
+    isTransitioning = false;
+    return false;
+  }
+}
+
 // Loading screen functions
-function showLoadingScreen() {
+function showLoadingScreen(message) {
   let loadingScreen = document.getElementById('loading-screen');
   
   if (!loadingScreen) {
@@ -182,7 +344,7 @@ function showLoadingScreen() {
       <div class="loading-content">
         <h2>LOADING...</h2>
         <div class="loading-spinner"></div>
-        <p>Entering new facility...</p>
+        <p>${message || 'Entering new facility...'}</p>
       </div>
     `;
     loadingScreen.style.cssText = `

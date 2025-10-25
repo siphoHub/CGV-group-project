@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
+import { StartScreen } from "./gameplay/startScreen.js";
 
 import { cutscene12 } from "./gameplay/cutscene12.js";    
 import { cutscene23 } from "./gameplay/cutscene23.js";
@@ -18,11 +19,12 @@ addEventListener("keydown", (e) => {
   
   // L key for level progression
   if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
-    progressToLevel2(scene, gameController, camera).then(success => {
-      if (success) {
-        console.log("[Main] Successfully progressed to Level 2");
-      }
-    });
+    // Immediately transition to Level 3 (blenderL3) when L is pressed
+    transitionToLevel('level3', scene, gameController, camera, 'Entering the experiment testing room')
+      .then(success => {
+        if (success) console.log('[Main] Successfully progressed to Level 3');
+        else console.warn('[Main] Failed to progress to Level 3');
+      });
   }
 });
 
@@ -88,9 +90,45 @@ window.addEventListener("level:colliders", (e) => {
 // Initialize DoorManager when Level 2 is loaded
 window.addEventListener("level:loaded", (e) => {
   const levelName = e.detail?.levelName;
-  if (levelName === "level2") {
-    console.log("[main] Level 2 loaded, initializing DoorManager...");
+  if (levelName === "level2" || levelName === 'level3') {
+    console.log(`[main] ${levelName} loaded, initializing DoorManager...`);
     initializeDoorManager();
+  }
+});
+
+// Listen for keycard usage event from level2 and transition to level3 with a custom message
+window.addEventListener('keycard:used', async (e) => {
+  const detail = e.detail || {};
+  const target = detail.targetLevel || 'level3';
+  const message = detail.loadingMessage || 'Loading...';
+  console.log('[main] Keycard used, transitioning to', target, 'with message:', message);
+
+  // Use the level loader to show the custom message and load target
+  // We rely on loadLevel to accept side-effects; show loading screen first
+  const loadingEl = document.getElementById('loading-screen');
+  if (loadingEl) {
+    // Update message if loading screen already exists
+    const p = loadingEl.querySelector('.loading-content p');
+    if (p) p.textContent = message;
+    loadingEl.style.display = 'flex';
+  } else {
+    // Create a simple loading screen if none exists
+    const ls = document.createElement('div');
+    ls.id = 'loading-screen';
+    ls.innerHTML = `<div class="loading-content"><h2>LOADING...</h2><div class="loading-spinner"></div><p>${message}</p></div>`;
+    ls.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.9);z-index:10000;color:white;font-family:monospace;';
+    document.body.appendChild(ls);
+  }
+
+  try {
+    const success = await transitionToLevel(target, scene, gameController, camera, message);
+    if (success) {
+      console.log('[main] Transition to', target, 'complete');
+    } else {
+      console.warn('[main] Transition to', target, 'failed');
+    }
+  } catch (err) {
+    console.error('[main] Error during keycard transition:', err);
   }
 });
 
@@ -237,13 +275,10 @@ function playAccessDeniedSound() {
   accessDeniedSound.play().catch(err => console.log("Failed to play access denied sound:", err));
 }
 
-// --- Start Music ---
-startBackgroundMusic();
-
-// --- Cutscene + parallel level load ---
-const cutscene = new OpeningCutscene();
+let cutscene = null;
 let levelLoaded = false;
 let readyToInit = false;
+let hasGameStarted = false;
 
 //schedule cutscene to to play and then 15seconds in, level must start loading
 let cutsceneLoadTimer = null;
@@ -273,19 +308,33 @@ cutscene.play(
   if (!levelLoadStarted) {
     startLevelLoad();}
 
-
-    if (levelLoaded) {
-      initializeGame(lights);
-      fadeBackgroundMusic();
-    } else {
-      readyToInit = true; // Mark that we're ready to initialize when level loads
-    }
-  },
-  // Callback to start level loading during cutscene
-  () => {
-    loadLevelInBackground();
+function beginGameFlow() {
+  if (hasGameStarted) {
+    return;
   }
-);
+  hasGameStarted = true;
+
+  startBackgroundMusic();
+
+  cutscene = new OpeningCutscene();
+  levelLoaded = false;
+  readyToInit = false;
+
+  // Start cutscene with parallel level loading
+  cutscene.play(
+    () => {
+      if (levelLoaded) {
+        initializeGame(lights);
+        fadeBackgroundMusic();
+      } else {
+        readyToInit = true;
+      }
+    },
+    () => {
+      loadLevelInBackground();
+    }
+  );
+}
 
 cutsceneLoadTimer = setTimeout(() => {
   cutsceneLoadTimer = null;
@@ -843,6 +892,33 @@ function initializeGame(lights) {
     } else {
       console.warn('[Door] DoorManager not initialized when trying to unlock officeDoor2');
     }
+    // Ensure the mesh itself is marked interactable and cached so HUD shows the prompt
+    try {
+      const mesh = scene.getObjectByName('officeDoor2');
+      if (mesh) {
+        mesh.userData.interactable = true;
+        mesh.userData.interactionType = 'door';
+        // Remove any custom getInteractLabel so default 'Press E to open door' is shown
+        if (typeof mesh.userData.getInteractLabel === 'function') delete mesh.userData.getInteractLabel;
+        // Refresh cached interactables so the indicator system picks it up immediately
+        if (typeof refreshInteractableCache === 'function') refreshInteractableCache();
+        console.log('[Door] officeDoor2 mesh marked interactable and cache refreshed');
+      } else {
+        console.warn('[Door] officeDoor2 mesh not found in scene while unlocking');
+      }
+    } catch (err) { console.warn('[Door] Error ensuring officeDoor2 interactable', err && err.message); }
+    // Also disable the keycode terminal so it cannot be reused after successful entry
+    try {
+      const keypad = scene.getObjectByName('Object_7');
+      if (keypad) {
+        // mark as no longer interactable and change interactionType so HUD won't show 'Enter Code'
+        keypad.userData.interactable = false;
+        keypad.userData.interactionType = 'keycode-used';
+        // Refresh cache to remove it from the interactable list
+        if (typeof refreshInteractableCache === 'function') refreshInteractableCache();
+        console.log('[Keycode] Disabled Object_7 after successful code entry');
+      }
+    } catch (err) { console.warn('[Keycode] Error disabling Object_7', err && err.message); }
   }
 
   // key to interact (nearest-in-range)
@@ -861,14 +937,26 @@ function initializeGame(lights) {
       }
     });
     
-    if (nearest) {
+  if (nearest) {
+      console.log('[Interact] E pressed. nearest=', nearest.name, 'interactionType=', nearest.userData?.interactionType, 'hasOnInteract=', typeof nearest.userData?.onInteract === 'function');
+      // Debug: list hinged doors
+      if (Array.isArray(window.levelHingedDoors)) {
+        console.log('[Interact] levelHingedDoors count=', window.levelHingedDoors.length, window.levelHingedDoors.map(h=>h.mesh.name));
+      }
       // Check if this is Object_7 (keycode terminal)
-      if (nearest.name === 'Object_7' && nearest.userData.interactionType === 'keycode') {
-        // Show keycode interface
-        keycodeInterface.style.display = 'block';
-        // Unlock controls so player can interact with UI
-        controls.unlock();
-        console.log('[Keycode] Opening security terminal interface');
+  if (nearest.name === 'Object_7' && nearest.userData.interactionType === 'keycode') {
+        // Require a tighter distance for the keycode terminal so player must be very close
+        const distToTerminal = camera.position.distanceTo(nearest.getWorldPosition(new THREE.Vector3()));
+        const KEYCODE_INTERACT_DISTANCE = 1.0; // meters (reduced from global interactionDistance)
+        if (distToTerminal > KEYCODE_INTERACT_DISTANCE) {
+          console.log(`[Keycode] Too far to interact (dist=${distToTerminal.toFixed(2)} > ${KEYCODE_INTERACT_DISTANCE})`);
+        } else {
+          // Show keycode interface
+          keycodeInterface.style.display = 'block';
+          // Unlock controls so player can interact with UI
+          controls.unlock();
+          console.log('[Keycode] Opening security terminal interface');
+        }
       } else if (nearest.name === 'defaultMaterial001_1' && nearest.userData.interactionType === 'computer') {
         // Show email interface
         emailInterface.style.display = 'block';
@@ -896,14 +984,22 @@ function initializeGame(lights) {
         controls.unlock();
         console.log('[SafeBox] Opening safe box interface');
       } else if (nearest.userData.interactionType === 'door') {
-        // Handle door interaction with E key
-        handleDoorInteraction(nearest);
+        // Prefer calling object-defined interaction (e.g. HingedDoor provides onInteract)
+        if (typeof nearest.userData.onInteract === 'function') {
+          try { nearest.userData.onInteract(); } catch (e) { console.warn('onInteract failed', e); }
+        } else {
+          // Fallback to DoorManager lock/unlock toggle
+          handleDoorInteraction(nearest);
+        }
       } else if (nearest.name === 'Cube003_keyPad_0' && nearest.userData.interactionType === 'keycard-reader') {
         // Check if player has keycard
         if (gameController && gameController.hud && gameController.hud.hasKeycard) {
           console.log('[KeycardReader] Using keycard on reader');
-          // Add your keycard reader logic here
-          alert('Keycard used successfully!');
+          // Dispatch event to trigger level transition to level3 (blenderL3)
+          window.dispatchEvent(new CustomEvent('keycard:used', {
+            detail: { targetLevel: 'level3', loadingMessage: 'Entering the experiment testing room' }
+          }));
+          if (gameController.playPickupSound) gameController.playPickupSound();
         } else {
           console.log('[KeycardReader] No keycard in inventory');
         }
@@ -985,9 +1081,17 @@ function initializeDoorManager() {
   const doorConfigs = [
     { name: 'testingRoom1_Door', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
     { name: 'officeDoor1', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
-    { name: 'officeDoor2', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
-    { name: 'J_2b17002', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 }
+    // officeDoor2 and J_2b17002 are intentionally omitted so they won't auto-open by proximity.
+    // They are handled via per-mesh HingedDoor onInteract (require explicit E press).
   ];
+
+  // Merge per-level registered door configs (if any)
+  if (Array.isArray(window.levelDoorConfigs) && window.levelDoorConfigs.length) {
+    for (const c of window.levelDoorConfigs) {
+      if (!doorConfigs.find(x => x.name === c.name)) doorConfigs.push(c);
+    }
+    console.log('[DoorManager] Merged per-level door configs:', window.levelDoorConfigs.map(d => d.name));
+  }
 
   doorManager = new DoorManager(
     scene,
@@ -1015,7 +1119,7 @@ function initializeDoorManager() {
     console.log(`[DoorManager] Found ${doorManager.doors.length} doors:`, doorManager.doors.map(d => d.node.name));
     doorManager.doors.forEach(door => {
       // Initially lock doors that require keys/progression
-      if (door.node.name === 'officeDoor1' || door.node.name === 'testingRoom1_Door' || door.node.name === 'officeDoor2') {
+      if (door.node.name === 'officeDoor1' || door.node.name === 'testingRoom1_Door') {
         door.locked = true;
         console.log(`[DoorManager] Initially locked ${door.node.name}`);
       } else {
@@ -1027,6 +1131,14 @@ function initializeDoorManager() {
     console.warn('[DoorManager] No doors found during initialization');
   }
 }
+
+// Dev helper: force open all hinged doors (useful when debugging)
+window.openAllHingedDoors = function() {
+  if (!Array.isArray(window.levelHingedDoors)) return;
+  for (const hd of window.levelHingedDoors) {
+    try { hd.open(); console.log('[Dev] Opening hinged door', hd.mesh.name); } catch (e) { console.warn('openAllHingedDoors failed', e); }
+  }
+};
 
 function handleDoorInteraction(doorObject = null) {
   // Fallback: try to initialize DoorManager if it's not ready yet
@@ -1256,11 +1368,15 @@ function checkForInteractables() {
       interactionIndicator.textContent = "Press E to unlock SafeBox";
     } else if (isDoor) {
       p.y += 0.5; // Higher position for doors
-      // Check door lock state and show appropriate prompt
-      const doorData = doorManager?.doors.find(d => d.node.name === target.name);
-      const isLocked = doorData?.locked ?? false;
-      const action = isLocked ? 'unlock' : 'lock';
-      interactionIndicator.textContent = `Press E to ${action} door`;
+      // If the object provides a custom interact label (e.g. HingedDoor), use it
+      if (typeof target.userData?.getInteractLabel === 'function') {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        // Check door lock state and show appropriate prompt
+        const doorData = doorManager?.doors.find(d => d.node.name === target.name);
+        const isLocked = doorData?.locked ?? false;
+        interactionIndicator.textContent = isLocked ? 'Press E to unlock door' : 'Press E to open door';
+      }
     } else if (isKeycardReader) {
       p.y += 0.5; // Higher position for keycard reader
       if (gameController && gameController.hud && gameController.hud.hasKeycard) {
@@ -1346,6 +1462,12 @@ function animate() {
   if (doorManager) {
     doorManager.update(dt);                     // update door animations
   }
+  // Update any lightweight hinged doors created by level loaders
+  if (Array.isArray(window.levelHingedDoors) && window.levelHingedDoors.length) {
+    for (const hd of window.levelHingedDoors) {
+      try { hd.update(dt); } catch (e) { console.warn('HingedDoor update failed', e); }
+    }
+  }
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
     
@@ -1364,4 +1486,14 @@ function animate() {
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
+
+window.addEventListener("credits:restart", () => {
+  window.location.reload();
+});
+
+const startScreen = new StartScreen();
+startScreen.waitForStart().then(() => {
+  beginGameFlow();
+});
+
 requestAnimationFrame(animate);
