@@ -1,4 +1,3 @@
-
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
@@ -162,6 +161,20 @@ export default async function loadLevel1(scene) {
         
         if (forceMatch(name) || true) {
           colliders.push(b);
+        }
+      }
+
+      {
+        const targets = [];
+        lobby.traverse(o=>{ if (o.name === 'Mesh_0001' || /^industrial elevator dc$/i.test(o.name||'') || /^Material_0\.001$/i.test(o.name||'')) targets.push(o); });
+        const eBoxes = [];
+        for (const t of targets) {
+          const eb = new THREE.Box3().setFromObject(t);
+          if (Number.isFinite(eb.min.x) && Number.isFinite(eb.min.y) && Number.isFinite(eb.min.z) && Number.isFinite(eb.max.x) && Number.isFinite(eb.max.y) && Number.isFinite(eb.max.z)) eBoxes.push(eb);
+        }
+        for (let i = passthrough.length - 1; i >= 0; --i) {
+          const p = passthrough[i];
+          if (eBoxes.some(eb => eb.intersectsBox(p))) passthrough.splice(i,1);
         }
       }
 
