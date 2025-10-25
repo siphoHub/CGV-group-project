@@ -55,7 +55,7 @@ export class HUD {
         <h4>INVENTORY</h4>
         <div id="inventory-items">
           <div id="flashlight-item" class="inventory-item hidden">
-            <img src="/models/assets/FlashlightIcon.jpg" 
+            <img src="/models/assets/FlashlightIcon.jpg"
                  alt="Flashlight" class="inventory-icon flashlight-image">
             <span class="inventory-label">Flashlight</span>
           </div>
@@ -68,7 +68,7 @@ export class HUD {
             <span class="inventory-label">Batteries</span>
           </div>
           <div id="keycard-item" class="inventory-item hidden">
-            <img src="/models/assets/KeycardIcon.png" 
+            <img src="/models/assets/KeycardIcon.png"
                  alt="Keycard" class="inventory-icon keycard-image">
             <span class="inventory-label">Keycard</span>
           </div>
@@ -76,11 +76,11 @@ export class HUD {
       </div>
 
       <div id="game-messages" class="hidden"><div id="message-text"></div></div>
-      
+
       <div id="pause-menu" class="hidden">
         <div id="pause-content">
           <h2>GAME PAUSED</h2>
-          
+
           <div id="pause-sections">
             <div id="controls-section">
               <h3>CONTROLS</h3>
@@ -94,13 +94,13 @@ export class HUD {
                 <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
               </div>
             </div>
-            
+
             <div id="pause-objectives-section">
               <h3>OBJECTIVES</h3>
               <ul id="pause-objectives-list"></ul>
             </div>
           </div>
-          
+
           <div id="pause-footer">
             <button id="resume-button">▶️ RESUME GAME</button>
           </div>
@@ -171,22 +171,22 @@ export class HUD {
         100% { opacity: 0.9; }
       }
       #battery-bars{ display:flex; gap:3px; height:27px; }
-      .battery-bar{ 
-        flex:1; border: none; border-radius:3px; background:#2a2a2a; 
+      .battery-bar{
+        flex:1; border: none; border-radius:3px; background:#2a2a2a;
         transition: all 0.3s ease;
       }
-      .battery-bar.active{ 
-        background: linear-gradient(180deg, #4a7a4a, #336633); 
-        box-shadow: 0 0 4px rgba(74, 122, 74, 0.6); 
+      .battery-bar.active{
+        background: linear-gradient(180deg, #4a7a4a, #336633);
+        box-shadow: 0 0 4px rgba(74, 122, 74, 0.6);
       }
-      .battery-bar.low-energy{ 
-        background:linear-gradient(180deg, #cc7700, #996600); 
-        box-shadow:0 0 5px rgba(204, 119, 0, 0.5); 
+      .battery-bar.low-energy{
+        background:linear-gradient(180deg, #cc7700, #996600);
+        box-shadow:0 0 5px rgba(204, 119, 0, 0.5);
         animation: lowEnergyPulse 2s infinite ease-in-out;
       }
-      .battery-bar.critical-energy{ 
-        background:linear-gradient(180deg, #cc4444, #994444); 
-        animation: criticalPulse 0.8s infinite ease-in-out; 
+      .battery-bar.critical-energy{
+        background:linear-gradient(180deg, #cc4444, #994444);
+        animation: criticalPulse 0.8s infinite ease-in-out;
         box-shadow: 0 0 8px rgba(204, 68, 68, 0.7);
       }
       @keyframes criticalPulse{
@@ -199,27 +199,27 @@ export class HUD {
         50%{opacity:0.75;}
         100%{opacity:1;}
       }
-      #battery-time-remaining{ 
-        text-align:center; font-size:18px; color:#bbb; 
+      #battery-time-remaining{
+        text-align:center; font-size:18px; color:#bbb;
         text-shadow: 0 0 4px rgba(187, 187, 187, 0.4);
       }
 
       #energy-bar-container{ display:flex; align-items:center; gap:10px; }
-      #energy-bar{ 
-        flex:1; height:16px; background:#2a2a2a; border: none; border-radius:10px; overflow:hidden; 
+      #energy-bar{
+        flex:1; height:16px; background:#2a2a2a; border: none; border-radius:10px; overflow:hidden;
         box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
       }
-      #energy-fill{ 
-        height:100%; 
-        background: linear-gradient(90deg, #cc4444, #cc7700, #4a7a4a); 
-        width:100%; transition: width .15s linear; 
+      #energy-fill{
+        height:100%;
+        background: linear-gradient(90deg, #cc4444, #cc7700, #4a7a4a);
+        width:100%; transition: width .15s linear;
         box-shadow: 0 0 6px rgba(74, 122, 74, 0.4);
       }
       #energy-percentage{ font-size:18px; color:#bbb; min-width:54px; text-align:right; text-shadow: 0 0 4px rgba(187, 187, 187, 0.4); }
       #flashlight-status{ text-align:center; font-size:18px; color:#666; margin-top:9px; }
 
       /* inventory area styling */
-      #inventory-panel{ 
+      #inventory-panel{
         position:absolute; left:20px; bottom:20px; pointer-events:none;
         background: rgba(15, 15, 15, 0.9);
         padding: 15px;
@@ -227,11 +227,11 @@ export class HUD {
         min-width: 180px;
       }
       #inventory-panel h4 {
-        margin: 0 0 12px 0; 
-        color: #bbb; 
-        font-size: 17px; 
-        text-align: center; 
-        letter-spacing: 1px; 
+        margin: 0 0 12px 0;
+        color: #bbb;
+        font-size: 17px;
+        text-align: center;
+        letter-spacing: 1px;
         text-transform: uppercase;
         text-shadow: 0 0 4px rgba(187, 187, 187, 0.3);
       }
@@ -277,8 +277,8 @@ export class HUD {
         50%{opacity:.6; filter: brightness(0.7);}
         100%{opacity:1; filter: brightness(1);}
       }
-      .flashlight-on #flashlight-status{ 
-        color:#bbb; font-weight:bold; 
+      .flashlight-on #flashlight-status{
+        color:#bbb; font-weight:bold;
         text-shadow: 0 0 4px rgba(187, 187, 187, 0.5);
       }
       .flashlight-off #flashlight-status{ color:#777; }
@@ -438,11 +438,11 @@ export class HUD {
           flex-direction: column;
           gap: 25px;
         }
-        
+
         #pause-content {
           padding: 25px;
         }
-        
+
         #pause-content h2 {
           font-size: 2rem;
         }
@@ -641,9 +641,16 @@ export class HUD {
   }
 
   restoreBatteryLife(amount = this.maxBatteryLife) {
-    this.batteryLife = Math.min(this.maxBatteryLife, this.batteryLife + amount);
+    const oldLife = this.batteryLife;
+    const batteryLife=Math.min(this.maxBatteryLife, this.batteryLife + amount);
+    const actualAdd=this.batteryLife - oldLife;
+
+    if(actualAdd >0)
+    {
+      this._barAccum = 0;
+    }
+
     this.updateBatteryDisplay();
-    this.showMessage(amount >= this.maxBatteryLife ? 'Battery fully restored!' : `Battery +${amount} bars`, 1600);
   }
 
   // --- Pause Menu Methods ---
@@ -660,14 +667,14 @@ export class HUD {
   togglePause() {
     this.isPaused = !this.isPaused;
     const pauseMenu = document.getElementById('pause-menu');
-    
+
     if (this.isPaused) {
       this.showPauseMenu();
       pauseMenu.classList.remove('hidden');
     } else {
       pauseMenu.classList.add('hidden');
     }
-    
+
     return this.isPaused;
   }
 
@@ -679,7 +686,7 @@ export class HUD {
   updatePauseObjectives() {
     const pauseObjectivesList = document.getElementById('pause-objectives-list');
     if (!pauseObjectivesList) return;
-    
+
     pauseObjectivesList.innerHTML = '';
     this.objectives.forEach(obj => {
       const li = document.createElement('li');
@@ -691,5 +698,121 @@ export class HUD {
 
   getPauseState() {
     return this.isPaused;
+  }
+
+  // game over battlety depleted
+  onBatteryDepleted() {
+    console.log('[HUD] Battery depleted - triggering game over');
+    this.showMessage('Battery depleted! Game Over.', 4000);
+    window.dispatchEvent(new CustomEvent('battery:depleted'));
+  }
+
+  showGameOverScreen() {
+    // Check if game over screen already exists
+    let gameOverScreen = document.getElementById('game-over-screen');
+
+    if (!gameOverScreen) {
+      gameOverScreen = document.createElement('div');
+      gameOverScreen.id = 'game-over-screen';
+      gameOverScreen.innerHTML = `
+        <div id="game-over-content">
+          <h1>GAME OVER</h1>
+          <p>Your flashlight died...</p>
+          <p class="game-over-subtitle">You couldn't survive in the darkness</p>
+          <button id="restart-button" onclick="window.location.reload()">TRY AGAIN</button>
+        </div>
+      `;
+
+      // Add styles for game over screen
+      const styles = document.createElement('style');
+      styles.textContent = `
+        #game-over-screen {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.95);
+          backdrop-filter: blur(10px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: fadeIn 1s ease-in;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        #game-over-content {
+          text-align: center;
+          color: #fff;
+          max-width: 600px;
+          padding: 40px;
+        }
+
+        #game-over-content h1 {
+          font-size: 4rem;
+          margin: 0 0 20px 0;
+          color: #cc4444;
+          text-shadow: 0 0 20px rgba(204, 68, 68, 0.8), 2px 2px 4px rgba(0, 0, 0, 0.8);
+          letter-spacing: 5px;
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.02); }
+        }
+
+        #game-over-content p {
+          font-size: 1.5rem;
+          margin: 15px 0;
+          color: #ccc;
+          font-family: 'Courier New', monospace;
+        }
+
+        .game-over-subtitle {
+          font-size: 1.2rem !important;
+          color: #888 !important;
+          font-style: italic;
+        }
+
+        #restart-button {
+          margin-top: 30px;
+          background: linear-gradient(135deg, #cc4444, #994444);
+          border: 2px solid #cc4444;
+          border-radius: 8px;
+          padding: 15px 30px;
+          font-size: 1.3rem;
+          font-weight: bold;
+          color: #fff;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          box-shadow: 0 4px 15px rgba(204, 68, 68, 0.4);
+        }
+
+        #restart-button:hover {
+          background: linear-gradient(135deg, #dd5555, #aa5555);
+          border-color: #dd5555;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(204, 68, 68, 0.6);
+        }
+
+        #restart-button:active {
+          transform: translateY(0);
+          box-shadow: 0 3px 10px rgba(204, 68, 68, 0.4);
+        }
+      `;
+
+      document.head.appendChild(styles);
+      document.body.appendChild(gameOverScreen);
+    } else {
+      gameOverScreen.style.display = 'flex';
+    }
   }
 }
