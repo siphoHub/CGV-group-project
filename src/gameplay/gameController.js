@@ -89,7 +89,8 @@ export class GameController {
   }
 
   // Handle object interactions from main.js
-  handleInteraction(object) {
+  handleInteraction(object)
+  {
     if (!object.userData.interactable) return;
 
     switch (object.name) {
@@ -118,31 +119,19 @@ export class GameController {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
-
-      case 'battery1':
-      case'battery2':
-      case'battery3.001':
-      case'battery3.002':
-      case'battery3.003':
-      case'battery3.004':
-      case'battery3.005':
-      case'battery3.006':
-      case'battery3.007':
-      case'battery3.008':
-      case'battery3.009':
-
-        this.playPickupSound();
-
-        this.hud.onBatteryInteraction();
-        const barsToAdd= 3;
-        this.hud.restoreBatteryLife(barsToAdd);
-
-        this.removeBattery(object);
-
-        console.log(`[Battery] Picked up ${object.name}, restored ${barsToAdd} battery bars`);
-
-
       default:
+
+      //batteries
+
+      if (object.name && object.name.toLowerCase().includes('battery'))
+      {
+        this.playPickupSound();
+        const barsToAdd = 3;
+        this.hud.restoreBatteryLife(barsToAdd);
+        this.removeBattery(object);
+        console.log('[Battery] Picked up ${object.name}, restored ${barsToAdd} battery bars');
+        break;
+      }
         // Doors via E: only allow if door requires E; show hint if door requires T
         if (object.userData?.toggleDoor && object.userData?.isDoor) {
           const req = object.userData.requiredKey || "E";
@@ -186,7 +175,7 @@ export class GameController {
           }
         break;
     }
-  }
+ }
 
   removeBattery(object)
   {
@@ -594,7 +583,7 @@ stopRoomFlashing() {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Level2 Objectives] Initialized with first objective: Find a clue to open office door');
-    
+
   }
 
   // Called when power is turned on (red lights appear)
@@ -695,40 +684,6 @@ stopRoomFlashing() {
         console.log('[Generator] Made generator interactable from start');
       }
     });
-  }
-
-  //batteries interactbale
-  enableBatteryInteraction() {
-    console.log('[Battery] Looking for batteries to enable...');
-    let batteryFound = false;
-
-    this.scene.traverse((child) => {
-      if (child.name.toLowerCase().includes('battery')) {
-        child.userData.interactable = true;
-        batteryFound = true;
-
-        const glow = new THREE.PointLight(0xffff00, 0.5, 2);
-        glow.position.copy(child.position);
-        child.userData.aura = glow;
-        if (child.parent)
-        {
-          child.parent.add(glow);
-        }
-        batteryFound=true;
-        console.log(`[Battery] Enabled interaction for ${child.name}`);
-      }
-    });
-
-    if (!batteryFound) {
-      console.log('[Battery] WARNING: No batteries found in scene!');
-    }
-
-    if (window.updateInteractableCache) {
-      console.log('[Battery] Refreshing interactable cache...');
-      window.updateInteractableCache();
-    } else {
-      console.log('[Battery] WARNING: updateInteractableCache not available!');
-    }
   }
 
   //game over

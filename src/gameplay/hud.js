@@ -642,7 +642,7 @@ export class HUD {
 
   restoreBatteryLife(amount = this.maxBatteryLife) {
     const oldLife = this.batteryLife;
-    const batteryLife=Math.min(this.maxBatteryLife, this.batteryLife + amount);
+    this.batteryLife=Math.min(this.maxBatteryLife, this.batteryLife + amount);
     const actualAdd=this.batteryLife - oldLife;
 
     if(actualAdd >0)
