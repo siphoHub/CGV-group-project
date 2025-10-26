@@ -16,6 +16,7 @@ export default async function loadLevel3(scene) {
       // Enable shadows on all meshes
       const colliders = [];
       const rayTargets = [];
+      const mapMeshes = [];
 
       lab.traverse((child) => {
         if (child.isMesh) {
@@ -49,11 +50,102 @@ export default async function loadLevel3(scene) {
               child.userData.locked = !!child.userData.locked;
               console.log('[Level3] Marked supplyRoomdoor001 as interactable door');
             }
+            //mark level 3 map as interactable
+            if (child.name === 'map'){
+              child.userData.interactable = true;
+              child.userData.interactionType = 'map';
+              child.userData.getInteractLabel = () => 'Press E to pick up map';
+              child.userData.isMapPickup = true;
+              mapMeshes.push(child);
+              console.log(`[Level3] Marked ${child.name} as mapL3`);
+            }
           }
         }
       });
 
+      if (mapMeshes.length > 0) {
+        // Add a translucent highlight sphere so players can spot the map pickup easily
+        const highlightGeometry = new THREE.SphereGeometry(1, 24, 24);
+        const baseMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.25,
+          depthTest: false,
+          depthWrite: false,
+        });
+        mapMeshes.forEach((mapMesh) => {
+          try {
+            const highlight = new THREE.Mesh(highlightGeometry, baseMaterial.clone());
+            highlight.name = `${mapMesh.name || 'map'}_highlight`;
+            highlight.castShadow = false;
+            highlight.receiveShadow = false;
+            highlight.renderOrder = 999;
+            highlight.userData.isMapHighlight = true;
+            highlight.userData.ignoreInteract = true;
+            highlight.userData.isHelper = true;
+
+            let radius = 0.6;
+            const center = new THREE.Vector3();
+            if (mapMesh.geometry) {
+              if (!mapMesh.geometry.boundingSphere) {
+                mapMesh.geometry.computeBoundingSphere();
+              }
+              if (mapMesh.geometry.boundingSphere) {
+                const { center: bsCenter, radius: bsRadius } = mapMesh.geometry.boundingSphere;
+                center.copy(bsCenter);
+                radius = Math.max(radius, bsRadius * 1.4);
+              } else {
+                mapMesh.geometry.computeBoundingBox();
+                if (mapMesh.geometry.boundingBox) {
+                  mapMesh.geometry.boundingBox.getCenter(center);
+                  const size = mapMesh.geometry.boundingBox.getSize(new THREE.Vector3());
+                  radius = Math.max(radius, Math.max(size.x, size.y, size.z) * 0.75);
+                }
+              }
+            }
+
+            highlight.position.copy(center);
+            highlight.scale.setScalar(radius);
+            mapMesh.add(highlight);
+            mapMesh.userData.mapHighlight = highlight;
+          } catch (err) {
+            console.warn('[Level3] Failed to create map highlight', err);
+          }
+        });
+      }
+
       scene.add(lab);
+
+      if (typeof window !== 'undefined') {
+        const bounds = new THREE.Box3().setFromObject(lab);
+        if (
+          Number.isFinite(bounds.min.x) && Number.isFinite(bounds.max.x) &&
+          Number.isFinite(bounds.min.z) && Number.isFinite(bounds.max.z)
+        ) {
+          const mapContentScale = 400 / 512;
+          const mapContentOffset = (1 - mapContentScale) / 2;
+          const minimapDetail = {
+            level: 'level3',
+            min: { x: bounds.min.x, z: bounds.min.z },
+            max: { x: bounds.max.x, z: bounds.max.z },
+            flipY: true,
+            mirrorY: true,
+            imageScale: { x: mapContentScale, y: mapContentScale },
+            imageOffset: { x: mapContentOffset, y: mapContentOffset }
+          };
+          if (typeof window.__level3MinimapDetail === 'undefined') {
+            window.__level3MinimapDetail = null;
+          }
+          window.__level3MinimapDetail = minimapDetail;
+          window.__level3MinimapUnlocked = false;
+          window.__pendingMinimapDetail = null;
+          window.__activeMinimapConfig = null;
+          window.dispatchEvent(new Event('minimap:clear'));
+          console.log('[Level3] Minimap prepared but hidden until map is collected');
+        } else {
+          console.warn('[Level3] Unable to compute minimap bounds for level 3');
+        }
+      }
 
       // --- Simple hinge helper and HingedDoor class (lightweight, per-level)
       // Robust hinge helper: compute hinge point using local geometry bbox when available,
@@ -197,6 +289,169 @@ export default async function loadLevel3(scene) {
           this.pivot.rotateOnAxis(new THREE.Vector3(0,1,0), delta);
         }
       }
+
+      // --- EXIT DOOR WIRING -------------------------------------------------------
+      const EXIT_DOOR_NAMES = [
+        "Object_2011",
+        "5ff867c60d244fe1bbf25826980a7c3b.obj.cleaner.materialmerger.gle",
+        "Object_2.011",
+        "exitDoor",
+        "Sketchfab_model.002",
+      ];
+
+      // ---- Ultra-loose name matching (strips spaces, _, -, and .) ----
+      function normalizeName(s) {
+        return (s || "")
+          .toLowerCase()
+          .trim()
+          .replace(/[\s_\-.]+/g, ""); // strip spaces/underscores/hyphens/dots
+      }
+
+      function getNodeByLooseName(root, targetName) {
+        if (!targetName) return null;
+
+        // 1) exact fast path
+        let node = root.getObjectByName(targetName);
+        if (node) return node;
+
+        // 2) collect all named nodes once
+        const all = [];
+        root.traverse(o => { if (o.name) all.push(o); });
+
+        // 3) case-insensitive exact
+        const tLower = targetName.toLowerCase();
+        node = all.find(o => o.name.toLowerCase() === tLower);
+        if (node) return node;
+
+        // 4) normalized equal
+        const tNorm = normalizeName(targetName);
+        // try exact normalized equality first
+        node = all.find(o => normalizeName(o.name) === tNorm);
+        if (node) return node;
+
+        // 5) startsWith either way (normalized) — good for “doorBlue” vs “doorBlue001”
+        node = all.find(o => {
+          const n = normalizeName(o.name);
+          return n.startsWith(tNorm) || tNorm.startsWith(n);
+        });
+        if (node) return node;
+
+        // 6) includes either way (normalized)
+        node = all.find(o => {
+          const n = normalizeName(o.name);
+          return n.includes(tNorm) || tNorm.includes(n);
+        });
+        if (node) return node;
+
+        console.warn("[level3] could not find node by name:", targetName);
+        return null;
+      }
+
+      function findExitNode(root) {
+        // try candidates by loose name
+        for (const nm of EXIT_DOOR_NAMES) {
+          const n = getNodeByLooseName(root, nm);
+          if (n) return n;
+        }
+        // last resort: pick the *largest door-like* object by bounding box height+width
+        let best = null, bestScore = -Infinity;
+        root.traverse(o => {
+          if (!o.isMesh || !o.visible) return;
+          const name = (o.name || "").toLowerCase();
+          if (!name.includes("door")) return;
+          const box = new THREE.Box3().setFromObject(o);
+          if (!isFinite(box.min.x)) return;
+          const size = new THREE.Vector3(); box.getSize(size);
+          const score = size.x + size.y; // “big door-ish”
+          if (score > bestScore) { bestScore = score; best = o; }
+        });
+        return best;
+      }
+
+      function collectExitNodes(root) {
+        const set = new Set();
+        for (const nm of EXIT_DOOR_NAMES) {
+          const node = getNodeByLooseName(root, nm);
+          if (node) set.add(node);
+        }
+        if (set.size === 0) {
+          const fallback = findExitNode(root);
+          if (fallback) set.add(fallback);
+        }
+        return Array.from(set);
+      }
+
+      function applyExitInteraction(node) {
+        console.log(`[level3] tagging exit root "${node.name}" (uuid=${node.uuid})`);
+        const dispatchExit = () => {
+          console.log(`[level3] dispatching level3:exit from "${node.name}"`);
+          window.dispatchEvent(new CustomEvent("level3:exit", {
+            detail: { source: node.name }
+          }));
+        };
+
+        const tagNode = (target) => {
+          const prevType = target.userData.interactionType;
+          target.userData.interactable = true;
+          target.userData.interactionType = "exit";
+          target.userData.getInteractLabel = () => "Press E to Exit";
+          target.userData.onInteract = dispatchExit;
+          console.log(`[level3]  ↳ tagged "${target.name || "(unnamed)"}" as exit (was ${prevType || "unset"})`);
+        };
+
+        tagNode(node);
+        node.traverse((child) => {
+          if (child !== node && child.isMesh) {
+            tagNode(child);
+          }
+        });
+      }
+
+      function wireExitInteractable(root) {
+        const nodes = collectExitNodes(root);
+        if (nodes.length === 0) {
+          console.warn("[level3] no exit door found");
+          return [];
+        }
+
+        for (const node of nodes) {
+          applyExitInteraction(node);
+          console.log(`[level3] exit wired on "${node.name}"`);
+        }
+
+        if (typeof window !== "undefined") {
+          window.level3ExitNodes = nodes;
+          try {
+            window.dispatchEvent(new CustomEvent("debug:level3:exitNodes", {
+              detail: nodes.map(n => ({ name: n.name, uuid: n.uuid }))
+            }));
+          } catch (err) {
+            console.warn("[level3] failed to emit debug exit nodes event:", err);
+          }
+
+          if (typeof window.updateInteractableCache === "function") {
+            window.updateInteractableCache();
+            setTimeout(() => {
+              try { window.updateInteractableCache?.(); } catch (err) {
+                console.warn("[level3] deferred interactable cache refresh failed:", err);
+              }
+            }, 0);
+          } else {
+            console.warn("[level3] updateInteractableCache unavailable when wiring exit; retrying soon");
+            setTimeout(() => {
+              try {
+                window.updateInteractableCache?.();
+              } catch (err) {
+                console.warn("[level3] retry interactable cache refresh failed:", err);
+              }
+            }, 500);
+          }
+        }
+
+        return nodes;
+      }
+
+      wireExitInteractable(lab);
 
       // Instantiate HingedDoor for named doors (create for both Cube_Door_0 and J_2b17 if present)
       try {

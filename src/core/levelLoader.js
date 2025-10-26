@@ -16,6 +16,7 @@ export function isLevelTransitioning() {
 }
 
 export function loadLevel(levelName, scene) {
+  //levelName = "level3" //remove
   switch (levelName) {
     case "level1":
       return loadLevel1(scene);
@@ -85,6 +86,12 @@ function clearCurrentLevel(scene) {
       obj.parent.remove(obj);
     }
   });
+
+  if (typeof window !== 'undefined') {
+    window.__pendingMinimapDetail = null;
+    window.__activeMinimapConfig = null;
+    window.dispatchEvent(new Event('minimap:clear'));
+  }
   
   console.log(`[LevelLoader] Cleared ${objectsToRemove.length} objects from scene`);
 }

@@ -110,10 +110,72 @@ export default async function loadLevel2(scene) {
           child.userData.interactionType = 'keycard-reader';
           console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
+
+        //mark level 2 map as interactable
+        if (child.name === 'map'){
+          child.userData.interactable = true;
+          child.userData.interactionType = 'map';
+          console.log(`[Level2] Marked ${child.name} as mapL2`);
+        }
+        //logs for level 2
+        if (child.name === 'testingRoom1_Log1' || child.name === 'testingRoom1_Log2' || child.name === 'testingRoom2_Log1' || child.name === 'testingRoom2_Log2' 
+          || child.name === 'office2_Log2' || child.name === 'office1_Log1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'log';
+          console.log(`[Level2] Marked ${child.name} as log`);
+        }
+
       }
     });
 
     scene.add(facility);
+
+    console.log('[Level2] Setting up battery interactables...');
+
+    const batteryNames = [
+      'battery1', 'battery2', 'battery3.001', 'battery3.002',
+      'battery3.003', 'battery3.004', 'battery3.005', 'battery3.006'
+    ];
+
+    let batteriesMarked = 0;
+
+    // First pass: exact name matches
+    facility.traverse((child) => {
+      if (batteryNames.includes(child.name)) {
+        child.userData.interactable = true;
+        child.userData.interactionType = 'battery';
+        batteriesMarked++;
+        console.log(`[Level2] ✅ Battery marked (exact): ${child.name}`);
+      }
+    });
+
+    facility.traverse((child) => {
+      if (child.name && !child.userData.interactable) {
+        const nameLower = child.name.toLowerCase();
+        if (nameLower.includes('battery') || nameLower.includes('batt')) {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'battery';
+          batteriesMarked++;
+          console.log(`[Level2] ✅ Battery marked (partial): ${child.name}`);
+        }
+      }
+    });
+
+    console.log(`[Level2] Total batteries marked: ${batteriesMarked}`);
+
+    // Debug: List all objects if no batteries found
+    if (batteriesMarked === 0) {
+      console.warn('[Level2] ⚠️ NO BATTERIES FOUND! Listing all objects:');
+      let count = 0;
+      facility.traverse((child) => {
+        if (child.name && count < 100) {
+          console.log(`  - ${child.name}`);
+          count++;
+        }
+      });
+    }
+
+
 
     // Add hinged door helper and create HingedDoor for supplyRoomdoor001 and other doors
     function computeHingePoint(node, side = 'right') {

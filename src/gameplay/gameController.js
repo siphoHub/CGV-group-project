@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { HUD } from './hud.js';
 import ZipOverlay from './zipOverlay.js';
+import { showCreditsOverlay } from './credits.js';
 
 export class GameController {
   constructor(scene, camera,lights, controls,initialLightingState='normal') {
@@ -26,6 +27,7 @@ export class GameController {
     // Make sure generator is interactable from start
     this.ensureGeneratorInteractable();
   // Screen interaction is enabled when the appropriate level is loaded (main.js will call enableScreenInteraction for level3)
+
 
     // Audio system for sound effects
     this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
@@ -99,11 +101,24 @@ export class GameController {
       this.handleGameOver();
     });
 
+    // End the level when level3 exit is triggered
+    window.addEventListener('level3:exit', () => {
+      this.onLevel3ExitReached();
+    });
+
   }
 
   // Handle object interactions from main.js
-  handleInteraction(object) {
+  handleInteraction(object)
+  {
     if (!object.userData.interactable) return;
+
+    // Exit door (level 3)
+    if (object.userData?.interactionType === 'exit') {
+      // allow both: main calling handleInteraction, or node.userData.onInteract hitting the event
+      this.onLevel3ExitReached();
+      return;
+    }
 
     switch (object.name) {
       case 'Flash_Light_Body_high':
@@ -131,12 +146,9 @@ export class GameController {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
+      default:
 
-      case 'AA Battery.001':
-        this.hud.onBatteryInteraction();
-        // Remove the battery from the scene (picked up)
-        this.scene.remove(object);
-        break;
+      //batteries
 
       case 'Screen001':
         // Open the mini-game (Zip-like) when player interacts with the screen
@@ -154,6 +166,15 @@ export class GameController {
         break;
 
       default:
+      if (object.name && object.name.toLowerCase().includes('battery'))
+      {
+        this.playPickupSound();
+        const barsToAdd = 3;
+        this.hud.restoreBatteryLife(barsToAdd);
+        this.removeBattery(object);
+        console.log('[Battery] Picked up ${object.name}, restored ${barsToAdd} battery bars');
+        break;
+      }
         // Doors via E: only allow if door requires E; show hint if door requires T
         if (object.userData?.toggleDoor && object.userData?.isDoor) {
           const req = object.userData.requiredKey || "E";
@@ -197,8 +218,28 @@ export class GameController {
           }
         break;
     }
-  }
+ }
 
+  removeBattery(object)
+  {
+    if (!object) return;
+
+    if (object.parent)
+    {
+      object.parent.remove(object);
+    }
+
+    if (object.userData.aura && object.parent)
+    {
+        object.parent.remove(object.userData.aura);
+    }
+
+    const interactionIndicator = document.getElementById('interaction-indicator');
+    if (interactionIndicator) {
+      interactionIndicator.style.display = 'none';
+    }
+    console.log('[Battery]  removed ${object.name} from scene after pickup');
+  }
   // Update the actual flashlight in the 3D scene
   updateFlashlightInScene(isOn) {
     const flashlightState = this.hud.getFlashlightState();
@@ -217,30 +258,26 @@ export class GameController {
 
   // Update method to be called in the main animation loop
   update() {
-    if (this.flashlight) {
+    const direction = new THREE.Vector3();
+    this.camera.getWorldDirection(direction);
 
-      // Always move flashlight to camera
+    if (this.flashlight) {
       this.flashlight.position.copy(this.camera.position);
 
-      // Point in the direction camera is facing
-      const direction = new THREE.Vector3();
-      this.camera.getWorldDirection(direction);
-
-      const targetPos = this.camera.position.clone().add(direction.multiplyScalar(10));
+      // Aim flashlight where the camera is facing
+      const targetPos = this.camera.position.clone().add(direction.clone().multiplyScalar(10));
       this.flashlight.target.position.copy(targetPos);
 
-      // Only make it visible if toggled on
       const flashlightState = this.hud.getFlashlightState();
       this.flashlight.visible = flashlightState.isOn && flashlightState.energy > 0;
-
-      // Update intensity
       this.flashlight.intensity = Math.max(0.1, flashlightState.energy / 100);
 
-      if (this.lights.updateFlashlightBeam)
-      {
+      if (this.lights.updateFlashlightBeam) {
         this.lights.updateFlashlightBeam();
       }
     }
+
+    this.hud.updateMinimap(this.camera.position, direction);
   }
 
   // Lighting state management
@@ -617,6 +654,7 @@ stopRoomFlashing() {
       this.hud.completeObjective(identifier);
     }
   }
+
   // Battery management methods
   setBatteryDrainTime(seconds) {
     this.hud.setBatteryDrainTime(seconds);
@@ -713,6 +751,7 @@ stopRoomFlashing() {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Level2 Objectives] Initialized with first objective: Find a clue to open office door');
+
   }
 
   // Called when power is turned on (red lights appear)
@@ -813,6 +852,23 @@ stopRoomFlashing() {
         console.log('[Generator] Made generator interactable from start');
       }
     });
+  }
+
+  onLevel3ExitReached() {
+    // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
+    this.completeObjective(1);
+    this.showEndCredits();
+    console.log('[Level3] Exit reached – rolling credits');
+  }
+
+  showEndCredits() {
+    try {
+      this.controls?.unlock();
+    } catch (err) {
+      console.warn('[GameController] Failed to unlock controls before credits:', err);
+    }
+
+    showCreditsOverlay({ restartOnFinish: true });
   }
 
   //game over
