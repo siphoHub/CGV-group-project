@@ -1,248 +1,58 @@
-// env/level2.js
-// Level 2: swing doors on correct local hinge; stable colliders; reliable interactables
+//level2
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export default async function loadLevel2(scene) {
   const loader = new GLTFLoader();
 
-  const colliders = [];
-  const rayTargets = [];
-  const passthrough = [];
-
-  // ------------ Door config ------------
-  // Map the names you actually have. You can add more entries or rely on the heuristic below.
-  const DOOR_CONFIGS = [
-    // Doors that must use T:
-    { name: "testingRoom1_Door", hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "T" },
-    { name: "officeDoor1",       hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "T" },
-
-    // Doors that use E:
-    { name: "officeDoor2",       hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-
-    // Other named doors (default E if not matched by heuristic):
-    { name: "LabDoor",                        hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-    { name: "Old Wood White Door Metal",     hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-    { name: "Old Wood White Door Metal.001", hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-    { name: "Old_Wood_White_Door_Metal",     hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-    { name: "Old_Wood_White_Door_Metal001",  hinge: "left",  openDeg: 100, speed: 0.60, requiredKey: "E" },
-  ];
-
-  const normalize = s => (s||"").toLowerCase().replace(/[\s_.]/g, "");
-  const EXACT = new Map(DOOR_CONFIGS.map(c => [c.name.toLowerCase(), c]));
-  const NORM  = new Map(DOOR_CONFIGS.map(c => [normalize(c.name), c]));
-
-  function configForName(name) {
-    if (!name) return null;
-    const low = name.toLowerCase();
-    const exact = EXACT.get(low);
-    if (exact) return { ...exact };
-    const norm = normalize(name);
-    const fuzzy = NORM.get(norm);
-    if (fuzzy) return { ...fuzzy };
-    // Heuristic: any door name that looks like testing*1 or office*1 → T, else E
-    if ((/testing.*1/.test(norm) || /office.*1/.test(norm))) {
-      return { name, hinge: "left", openDeg: 100, speed: 0.6, requiredKey: "T" };
-    }
-    // Otherwise E
-    return { name, hinge: "left", openDeg: 100, speed: 0.6, requiredKey: "E" };
-  }
-
-  function dispatchColliders() {
-    window.dispatchEvent(new CustomEvent("level:colliders", {
-      detail: { colliders, passthrough, rayTargets }
-    }));
-  }
-  function addPassBoxOnce(box) {
-    if (!passthrough.includes(box)) {
-      passthrough.push(box);
-      dispatchColliders();
-    }
-  }
-  function removePassBox(box) {
-    const i = passthrough.indexOf(box);
-    if (i !== -1) {
-      passthrough.splice(i, 1);
-      dispatchColliders();
-    }
-  }
-
-  /** door animation records */
-  const doors = [];
-
-  // --- Correct hinge setup: rotate around the DOOR'S local Y axis (expressed in world space) ---
-  function setupDoor(node, cfg) {
-    node.updateWorldMatrix(true, false);
-    const baseMatrix = node.matrixWorld.clone();
-
-    // World AABB (stable; won’t cause “holes”)
-    const worldBox = new THREE.Box3().setFromObject(node);
-    const sizeW   = worldBox.getSize(new THREE.Vector3());
-    const centerW = worldBox.getCenter(new THREE.Vector3());
-
-    // Keep faces visible from both sides so doors never disappear
-    node.traverse((c) => {
-      if (c.isMesh) {
-        c.frustumCulled = false;
-        if (c.material) {
-          const mats = Array.isArray(c.material) ? c.material : [c.material];
-          for (const m of mats) if (m) m.side = THREE.DoubleSide;
-        }
-      }
-    });
-
-    // LOCAL AABB by transforming world box back by inverse(baseMatrix)
-    const invBase = new THREE.Matrix4().copy(baseMatrix).invert();
-    const localBox = worldBox.clone().applyMatrix4(invBase);
-    const sizeL = localBox.getSize(new THREE.Vector3());
-
-    // Hinge local X at min/max in LOCAL SPACE (hinge: left => min.x, right => max.x)
-    const hingeLocalX = (cfg.hinge === "right") ? localBox.max.x : localBox.min.x;
-    const localPivot = new THREE.Vector3(
-      hingeLocalX,
-      (localBox.min.y + localBox.max.y) * 0.5,
-      (localBox.min.z + localBox.max.z) * 0.5
-    );
-    // Convert pivot to world
-    const pivotWorld = localPivot.clone().applyMatrix4(baseMatrix);
-
-    // Axis: door’s local +Y axis, expressed in world space
-    const axisY = new THREE.Vector3().setFromMatrixColumn(baseMatrix, 1).normalize();
-
-    // Build world basis to place the invisible “handle/anchor”
-    const axisX = new THREE.Vector3().setFromMatrixColumn(baseMatrix, 0).normalize();
-    const axisZ = new THREE.Vector3().setFromMatrixColumn(baseMatrix, 2).normalize();
-
-    const handleSide = (cfg.hinge === "right") ? -1 : +1;
-
-    // ⬇️ Anchor is closer so the player is within your 1.8m interact range by default.
-    const anchorPos = centerW.clone()
-      .add(axisZ.clone().multiplyScalar(0.25))                                 // was 0.35
-      .add(axisX.clone().multiplyScalar(handleSide * Math.max(0.45, sizeL.x*0.4))); // was 0.6/0.45
-
-    const anchor = new THREE.Object3D();
-    anchor.name = `${node.name}_Interact`;
-    anchor.position.copy(anchorPos);
-    anchor.userData.interactable = true;
-    anchor.userData.isDoor = true;
-    anchor.userData.requiredKey = (cfg.requiredKey === "T") ? "T" : "E";
-    anchor.userData.toggleDoor = () => {
-      const d = doors.find(x => x.node === node);
-      if (!d) return;
-      d.target = d.target > 0 ? 0 : 1;   // toggle open/close
-    };
-    scene.add(anchor);
-
-    // Also mark the actual door mesh as interactable (so “E” scanning finds it too)
-    node.userData.interactable = true;
-    node.userData.isDoor = true;
-    node.userData.requiredKey = anchor.userData.requiredKey;
-    node.userData.toggleDoor  = anchor.userData.toggleDoor;
-
-    // Pro-pass region that opens when door is 25% opened (lets you walk through)
-    const passW  = Math.max(0.8, sizeW.x) * 1.05;
-    const passH  = Math.max(2.0, sizeW.y) * 1.10;
-    const passD  = Math.max(0.3, sizeW.z) * 1.50;
-    const passMin = new THREE.Vector3(centerW.x - passW * 0.5, centerW.y - passH * 0.5, centerW.z - passD * 0.5);
-    const passMax = new THREE.Vector3(centerW.x + passW * 0.5, centerW.y + passH * 0.5, centerW.z + passD * 0.5);
-    const passBox = new THREE.Box3(passMin, passMax);
-
-    // Opportunistically seed your cache immediately (safe if not present)
-    if (Array.isArray(window.cachedInteractables)) {
-      window.cachedInteractables.push(anchor);
-      window.cachedInteractables.push(node);
-    }
-
-    return {
-      node,
-      name: node.name,
-      baseMatrix,
-      pivotWorld,
-      axisY,                                // rotate around this axis (world-space)
-      openRad: THREE.MathUtils.degToRad(cfg.openDeg ?? 100),
-      speed: Math.max(0.15, cfg.speed ?? 0.6),
-      t: 0,          // 0..1 opened amount (animation param)
-      target: 0,     // desired t (0 closed, 1 open)
-      passBox,
-      added: false,  // passBox added yet?
-      anchor,
-      requiredKey: anchor.userData.requiredKey,
-    };
-  }
-
-  // Compose rotation about arbitrary world axis at world-space pivot:
-  // M = T(p) * R_axis(angle) * T(-p) * baseMatrix
-  const _T1 = new THREE.Matrix4();
-  const _T2 = new THREE.Matrix4();
-  const _R  = new THREE.Matrix4();
-  function applyDoorPose(d) {
-    const angle = d.t * d.openRad;
-    _T1.makeTranslation(d.pivotWorld.x, d.pivotWorld.y, d.pivotWorld.z);
-    _T2.makeTranslation(-d.pivotWorld.x, -d.pivotWorld.y, -d.pivotWorld.z);
-    _R.makeRotationAxis(d.axisY, angle);
-    const M = new THREE.Matrix4().multiplyMatrices(_T1, _R).multiply(_T2).multiply(d.baseMatrix);
-    d.node.matrixAutoUpdate = false;
-    d.node.matrix.copy(M);
-  }
-
-  // Animate doors
-  let lastTS = performance.now();
-  function tickDoors() {
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - lastTS) / 1000);
-    lastTS = now;
-
-    for (const d of doors) {
-      if (d.t !== d.target) {
-        const step = dt / d.speed;
-        d.t = THREE.MathUtils.clamp(d.t + Math.sign(d.target - d.t) * step, 0, 1);
-
-        // smoothstep without distorting the state variable we compare against
-        const s = d.t * d.t * (3 - 2 * d.t);
-        const saved = d.t; d.t = s;
-        applyDoorPose(d);
-        d.t = saved;
-
-        if (s >= 0.25 && !d.added) { addPassBoxOnce(d.passBox); d.added = true; }
-        else if (s <= 0.05 && d.added) { removePassBox(d.passBox); d.added = false; }
-      }
-    }
-    requestAnimationFrame(tickDoors);
-  }
-
-  try {
+  try{
     const gltf = await loader.loadAsync("/models/blenderL2.glb");
+
     const facility = gltf.scene;
     facility.scale.set(1, 1, 1);
     facility.position.set(0, 0, 0);
 
+    // Performance optimization: Reduce polygon count for distant objects
     let meshCount = 0;
     let optimizedCount = 0;
+    const colliders = [];
+    const rayTargets = [];
 
-    // Collect colliders and ray targets; avoid heavy material tweaks
+    // Enable shadows and optimize meshes
     facility.traverse((child) => {
       if (child.isMesh) {
         meshCount++;
         child.castShadow = true;
         child.receiveShadow = true;
 
-        // Small perf save on tiny meshes
-        if (child.geometry?.boundingSphere) {
-          const r = child.geometry.boundingSphere.radius;
-          if (r < 0.5) { child.castShadow = false; optimizedCount++; }
+        // Performance optimization: Reduce shadow quality for smaller objects
+        if (child.geometry.boundingSphere) {
+          const radius = child.geometry.boundingSphere.radius;
+          if (radius < 0.5) {
+            child.castShadow = false; // Small objects don't cast shadows
+            optimizedCount++;
+          }
         }
 
-        // Don’t mess with UVs/textures, just skip mipmap regen to save memory
+        // Optimize materials for better performance
         if (child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          for (const m of mats) if (m?.map) m.map.generateMipmaps = false;
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => {
+              if (mat.map) {
+                mat.map.generateMipmaps = false; // Reduce texture memory
+              }
+            });
+          } else {
+            if (child.material.map) {
+              child.material.map.generateMipmaps = false;
+            }
+          }
         }
 
+        // Add to collision detection
         const box = new THREE.Box3().setFromObject(child);
-        if (
-          isFinite(box.min.x) && isFinite(box.min.y) && isFinite(box.min.z) &&
-          isFinite(box.max.x) && isFinite(box.max.y) && isFinite(box.max.z)
-        ) {
+        if (isFinite(box.min.x) && isFinite(box.min.y) && isFinite(box.min.z) &&
+            isFinite(box.max.x) && isFinite(box.max.y) && isFinite(box.max.z)) {
           colliders.push(box);
           rayTargets.push(child);
         }
@@ -252,35 +62,41 @@ export default async function loadLevel2(scene) {
           child.userData.interactable = true;
           console.log(`[Level2] Marked as interactable: ${child.name}`);
         }
-        
+        // Make Cube_Door_0 explicitly uninteractable
+        if (child.name === 'Cube_Door_0') {
+          child.userData.interactable = false;
+          delete child.userData.interactionType;
+          console.log('[Level2] Cube_Door_0 set to uninteractable');
+        }
+
         // Mark Object_7 as special keycode terminal
         if (child.name === 'Object_7') {
           child.userData.interactable = true;
           child.userData.interactionType = 'keycode';
           console.log(`[Level2] Marked Object_7 as keycode terminal`);
         }
-        
+
         // Mark defaultMaterial001_1 as computer terminal
         if (child.name === 'defaultMaterial001_1') {
           child.userData.interactable = true;
           child.userData.interactionType = 'computer';
           console.log(`[Level2] Marked defaultMaterial001_1 as computer terminal`);
         }
-        
+
         // Mark office2_Log1 as handwritten note
         if (child.name === 'office2_Log1') {
           child.userData.interactable = true;
           child.userData.interactionType = 'note';
           console.log(`[Level2] Marked office2_Log1 as handwritten note`);
         }
-        
+
         // Mark Cube014_1 as safe box
         if (child.name === 'Cube014_1') {
           child.userData.interactable = true;
           child.userData.interactionType = 'safebox';
           console.log(`[Level2] Marked Cube014_1 as safe box`);
         }
-        
+
         // Mark doors as interactable
         // Mark doors as interactable
         if (child.name === 'testingRoom1_Door' || child.name === 'officeDoor1' || child.name === 'officeDoor2' || child.name === 'J_2b17002') {
@@ -288,42 +104,216 @@ export default async function loadLevel2(scene) {
           child.userData.interactionType = 'door';
           console.log(`[Level2] Marked ${child.name} as door`);
         }
-        
+
         // Mark keycard reader as interactable (conditionally)
         if (child.name === 'Cube003_keyPad_0') {
           child.userData.interactionType = 'keycard-reader';
           console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
+
+        //mark level 2 map as interactable
+        if (child.name === 'map'){
+          child.userData.interactable = true;
+          child.userData.interactionType = 'map';
+          console.log(`[Level2] Marked ${child.name} as mapL2`);
+        }
+        //logs for level 2
+        if (child.name === 'testingRoom1_Log1' || child.name === 'testingRoom1_Log2' || child.name === 'testingRoom2_Log1' || child.name === 'testingRoom2_Log2' 
+          || child.name === 'office2_Log2' || child.name === 'office1_Log1') {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'log';
+          console.log(`[Level2] Marked ${child.name} as log`);
+        }
+
       }
     });
 
     scene.add(facility);
-    addLevel2Lighting(scene);
 
-    // Build / attach door behaviors
-    const hooked = [];
-    facility.traverse((o) => {
-      if (!o.name) return;
-      const cfg = configForName(o.name);
-      if (!cfg) return;
-      const rec = setupDoor(o, cfg);
-      if (rec) { doors.push(rec); hooked.push(`${o.name}[${rec.requiredKey}]`); }
+    console.log('[Level2] Setting up battery interactables...');
+
+    const batteryNames = [
+      'battery1', 'battery2', 'battery3.001', 'battery3.002',
+      'battery3.003', 'battery3.004', 'battery3.005', 'battery3.006'
+    ];
+
+    let batteriesMarked = 0;
+
+    // First pass: exact name matches
+    facility.traverse((child) => {
+      if (batteryNames.includes(child.name)) {
+        child.userData.interactable = true;
+        child.userData.interactionType = 'battery';
+        batteriesMarked++;
+        console.log(`[Level2] ✅ Battery marked (exact): ${child.name}`);
+      }
     });
 
-    dispatchColliders();
-
-    // Make sure main picks up interactables even if it cached earlier
-    const refresh = () => {
-      try {
-        if (typeof window.updateInteractableCache === "function") {
-          window.updateInteractableCache();
+    facility.traverse((child) => {
+      if (child.name && !child.userData.interactable) {
+        const nameLower = child.name.toLowerCase();
+        if (nameLower.includes('battery') || nameLower.includes('batt')) {
+          child.userData.interactable = true;
+          child.userData.interactionType = 'battery';
+          batteriesMarked++;
+          console.log(`[Level2] ✅ Battery marked (partial): ${child.name}`);
         }
-      } catch {}
-    };
-    refresh();
-    setTimeout(refresh, 80);
-    requestAnimationFrame(refresh);
-    setTimeout(refresh, 300);
+      }
+    });
+
+    console.log(`[Level2] Total batteries marked: ${batteriesMarked}`);
+
+    // Debug: List all objects if no batteries found
+    if (batteriesMarked === 0) {
+      console.warn('[Level2] ⚠️ NO BATTERIES FOUND! Listing all objects:');
+      let count = 0;
+      facility.traverse((child) => {
+        if (child.name && count < 100) {
+          console.log(`  - ${child.name}`);
+          count++;
+        }
+      });
+    }
+
+
+
+    // Add hinged door helper and create HingedDoor for supplyRoomdoor001 and other doors
+    function computeHingePoint(node, side = 'right') {
+      node.updateWorldMatrix(true, false);
+      let localBox = null;
+      if (node.geometry) {
+        if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+        if (node.geometry.boundingBox) localBox = node.geometry.boundingBox.clone();
+      }
+      if (localBox) {
+        const min = localBox.min.clone();
+        const max = localBox.max.clone();
+        const size = localBox.getSize(new THREE.Vector3());
+        const hingeAlongX = size.x >= size.z;
+        const hingeLocal = new THREE.Vector3();
+        if (hingeAlongX) {
+          hingeLocal.set(side === 'right' ? max.x : min.x, (min.y + max.y) * 0.5, (min.z + max.z) * 0.5);
+        } else {
+          hingeLocal.set((min.x + max.x) * 0.5, (min.y + max.y) * 0.5, side === 'right' ? max.z : min.z);
+        }
+        return hingeLocal.applyMatrix4(node.matrixWorld);
+      }
+      const box = new THREE.Box3().setFromObject(node);
+      if (!isFinite(box.min.x)) return null;
+      const center = box.getCenter(new THREE.Vector3());
+      const min = box.min, max = box.max;
+      return new THREE.Vector3(side === 'right' ? max.x : min.x, center.y, center.z);
+    }
+
+    function wrapWithHingePivotRobust(node, side = 'right', debug = false) {
+      const parent = node.parent;
+      if (!parent) return null;
+      const hingeWorld = computeHingePoint(node, side);
+      if (!hingeWorld) { console.warn('[level2] hinge point not found for', node.name); return null; }
+      const parentInv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+      const hingeLocal = hingeWorld.clone().applyMatrix4(parentInv);
+      const pivot = new THREE.Object3D();
+      pivot.name = node.name + '_hingePivot';
+      pivot.position.copy(hingeLocal);
+      parent.add(pivot);
+      pivot.updateWorldMatrix(true, false);
+      const nodeWorldMatrix = node.matrixWorld.clone();
+      parent.remove(node);
+      pivot.add(node);
+      const invPivotWorld = new THREE.Matrix4().copy(pivot.matrixWorld).invert();
+      node.matrix.copy(new THREE.Matrix4().multiplyMatrices(invPivotWorld, nodeWorldMatrix));
+      node.matrix.decompose(node.position, node.quaternion, node.scale);
+      node.updateWorldMatrix(true, false);
+      node.userData.hinged = true;
+      try { pivot.add(new THREE.AxesHelper(0.5)); if (debug) { const box = new THREE.Box3().setFromObject(node); const helper = new THREE.Box3Helper(box, 0xff0000); helper.userData.ignoreInteract = true; node.add(helper); } } catch(err) { console.warn('[level2] hinge helper debug add failed', err && err.message); }
+      return pivot;
+    }
+
+    // Heuristic: choose hinge side so the door opens inward (toward parent center)
+    function chooseHingeSideInward(node, openAngleRad = Math.PI/2) {
+      try {
+        const parent = node.parent;
+        if (!parent) return 'right';
+        const parentBox = new THREE.Box3().setFromObject(parent);
+        const parentCenter = parentBox.getCenter(new THREE.Vector3());
+
+        const box = new THREE.Box3().setFromObject(node);
+        const centroid = box.getCenter(new THREE.Vector3());
+
+        const sides = ['left','right'];
+        let bestSide = 'right';
+        let bestDelta = Infinity;
+
+        for (const s of sides) {
+          const hinge = computeHingePoint(node, s);
+          if (!hinge) continue;
+          const v = centroid.clone().sub(hinge);
+          const cos = Math.cos(openAngleRad), sin = Math.sin(openAngleRad);
+          const rx = v.x * cos - v.z * sin;
+          const rz = v.x * sin + v.z * cos;
+          const rotated = new THREE.Vector3(rx, v.y, rz).add(hinge);
+          const dist = rotated.distanceTo(parentCenter);
+          if (dist < bestDelta) { bestDelta = dist; bestSide = s; }
+        }
+        return bestSide;
+      } catch {
+        return 'right';
+      }
+    }
+
+    class HingedDoor {
+      constructor(node, { side = 'right', openAngleDeg = 90, speed = 6.0 } = {}) {
+        this.mesh = node;
+        this.pivot = wrapWithHingePivotRobust(node, side);
+        if (!this.pivot) throw new Error('Failed to create hinge pivot for ' + node.name);
+        this.openAngle = THREE.MathUtils.degToRad(openAngleDeg);
+        this.speed = speed;
+        this.current = 0;
+        this.target = 0;
+        this.mesh.userData.interactable = true;
+        this.mesh.userData.interactionType = 'door';
+        this.mesh.userData.onInteract = () => { this.toggle(); console.log('[HingedDoor] onInteract called for', node.name); };
+        this.mesh.userData.getInteractLabel = () => 'Press E to open/close';
+        console.log('[HingedDoor] created for', node.name, 'pivot:', this.pivot ? this.pivot.name : 'none');
+      }
+      open(){ this.target = this.openAngle; }
+      close(){ this.target = 0; }
+      toggle(){ this.target = (Math.abs(this.target) > 1e-3) ? 0 : this.openAngle; }
+      update(dt){ const next = THREE.MathUtils.damp(this.current, this.target, this.speed, dt); const delta = next - this.current; this.current = next; this.pivot.rotateOnAxis(new THREE.Vector3(0,1,0), delta); }
+    }
+
+    // create hinged doors for supply room and other doors
+    try {
+      const doorNames = ['supplyRoomdoor001','testingRoom1_Door','officeDoor1','officeDoor2','J_2b17002'];
+      // Per-door forced hinge side overrides when heuristic fails for a specific mesh.
+      const forcedHingeSides = {
+        // J_2b17002 was observed to open outward and block corridor; force it to open 'left' (inward)
+        'J_2b17002': 'left'
+      };
+      window.levelHingedDoors = window.levelHingedDoors || [];
+      for (const name of doorNames) {
+        let node = facility.getObjectByName(name) || facility.getObjectByProperty('name', name);
+        if (!node) { const want = name.toLowerCase(); facility.traverse(o => { if (!node && o.name && o.name.toLowerCase().includes(want)) node = o; }); }
+        if (!node) { console.log('[Level2] Door node not found for', name); continue; }
+        const already = window.levelHingedDoors.find(h => h.mesh === node || h.mesh.name === node.name);
+        if (already) { console.log('[Level2] HingedDoor already exists for', node.name); continue; }
+        // Allow explicit override per door name first, otherwise use heuristic
+        let preferredSide = forcedHingeSides[node.name] || 'right';
+        if (!forcedHingeSides[node.name]) {
+          try { preferredSide = chooseHingeSideInward(node, THREE.MathUtils.degToRad(90)); } catch { preferredSide = 'right'; }
+        } else {
+          console.log('[Level2] Forcing hinge side for', node.name, '->', preferredSide);
+        }
+        const hd = new HingedDoor(node, { side: preferredSide, openAngleDeg: 90, speed: 6.0 });
+        window.levelHingedDoors.push(hd);
+        console.log('[Level2] Created HingedDoor for', node.name);
+      }
+    } catch(err) { console.warn('[Level2] Could not create hinged doors:', err && err.message); }
+
+    // Dispatch collision event
+    window.dispatchEvent(new CustomEvent("level:colliders", {
+      detail: { colliders, passthrough: [], rayTargets }
+    }));
 
     // Dispatch level loaded event
     window.dispatchEvent(new CustomEvent("level:loaded", {
@@ -331,40 +321,8 @@ export default async function loadLevel2(scene) {
     }));
 
     console.log(`[Level2] GLB loaded | Meshes: ${meshCount} | Optimized: ${optimizedCount} | Colliders: ${colliders.length}`);
-    console.log(hooked.length ? `[Level2] Swing doors ready: ${hooked.join(", ")}` : "[Level2] No doors matched; check names.");
 
-    requestAnimationFrame(tickDoors);
-  } catch (error) {
+  } catch(error){
     console.error("Error loading Level 2 GLB:", error);
   }
-}
-
-// ---------------- Lighting (unchanged) ----------------
-function addLevel2Lighting(scene) {
-  // Very dim facility ambient lighting (dark vibe)
-  const hemi = new THREE.HemisphereLight(0x333355, 0x080812, 0.2);
-  hemi.userData.isPersistent = true;
-  scene.add(hemi);
-
-  const mainLight = new THREE.DirectionalLight(0xccddff, 0.3);
-  mainLight.position.set(5, 10, 5);
-  mainLight.castShadow = true;
-  mainLight.shadow.mapSize.width = 512;
-  mainLight.shadow.mapSize.height = 512;
-  mainLight.shadow.camera.near = 1;
-  mainLight.shadow.camera.far = 30;
-  mainLight.userData.isPersistent = true;
-  scene.add(mainLight);
-
-  const secondaryLight = new THREE.DirectionalLight(0x223344, 0.15);
-  secondaryLight.position.set(-5, 8, -3);
-  secondaryLight.userData.isPersistent = true;
-  scene.add(secondaryLight);
-
-  const redLight = new THREE.PointLight(0xff2222, 0.2, 6);
-  redLight.position.set(0, 3, 0);
-  redLight.userData.isPersistent = true;
-  scene.add(redLight);
-
-  console.log("[Level2] Very dim lighting system initialized - flashlight recommended!");
 }

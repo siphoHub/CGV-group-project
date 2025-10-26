@@ -1,9 +1,10 @@
 // Game Controller to manage HUD and game state
 import * as THREE from 'three';
 import { HUD } from './hud.js';
+import { showCreditsOverlay } from './credits.js';
 
 export class GameController {
-  constructor(scene, camera,lights, controls) {
+  constructor(scene, camera,lights, controls,initialLightingState='normal') {
     this.scene = scene;
     this.camera = camera;
     this.hud = new HUD();
@@ -11,14 +12,20 @@ export class GameController {
     this.flashlight = lights.flashlight;
     this.controls = controls;
     this.generatorActivated = false; // Track generator state
+
+    // remember last interacted T-door so you can close it even if not "nearest"
+    this._lastDoorT = null;
+
+    //this.addObjective("Turn on Power");
     this.powerTurnedOn = false; // Track power state for progressive objectives
     this.flashlightPickedUp = false; // Track flashlight pickup for progressive objectives
 
     // Initialize with first objective only
     this.initializeProgressiveObjectives();
-    
+
     // Make sure generator is interactable from start
     this.ensureGeneratorInteractable();
+
 
     // Audio system for sound effects
     this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
@@ -26,87 +33,43 @@ export class GameController {
 
     this.flashlightSwitchSound = new Audio('../public/models/assets/FlashlightSwitch.mp3');
     this.flashlightSwitchSound.volume = 1; // Set volume to 100%
-    
+
     this.generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
     this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
-    
+
     this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
 
     // Initialize lighting to normal state
-    this.setLightingState('normal');
+    this.setLightingState(initialLightingState);
 
     this.setupEventListeners();
   }
 
-  // ---------- helpers ----------
-  _isUsableDoor(obj) {
-    return !!(obj && obj.parent && obj.userData && obj.userData.isDoor && obj.userData.toggleDoor);
-  }
-
-  _nearestDoorRequiringKey(requiredKey, maxDist = 2.2) { // a touch more generous than 1.8
-    const list = (window.cachedInteractables && Array.isArray(window.cachedInteractables))
-      ? window.cachedInteractables
-      : [];
-    const cam = this.camera;
-    let nearest = null;
-    let best = maxDist;
-
-    for (const obj of list) {
-      if (!this._isUsableDoor(obj)) continue;
-      if ((obj.userData.requiredKey || "E") !== requiredKey) continue;
-
-      const d = cam.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
-      if (d <= maxDist && d < best) { best = d; nearest = obj; }
-    }
-    return nearest;
-  }
-
   setupEventListeners() {
+    // F key for flashlight toggle
     document.addEventListener('keydown', (event) =>
     {
+      // If paused, ignore most gameplay hotkeys except unpausing
       const paused = this.isPaused();
 
-      // ----- T key: toggle doors that require T -----
-      if (event.code === 'KeyT') {
-        event.preventDefault();
-        if (paused || !this.controls?.isLocked) return;
-
-        // prefer nearest T-door; else fallback to last interacted T-door
-        let doorT = this._nearestDoorRequiringKey("T", 2.2);
-        if (!doorT && this._isUsableDoor(this._lastDoorT)) {
-          const d = this.camera.position.distanceTo(
-            this._lastDoorT.getWorldPosition(new THREE.Vector3())
-          );
-          if (d <= 3.5) {
-            doorT = this._lastDoorT;
-          }
-        }
-
-        if (doorT && doorT.userData?.toggleDoor) {
-          try { doorT.userData.toggleDoor(); } catch (e) { console.warn('[Door-T] toggleDoor error:', e); }
-          this._lastDoorT = doorT;
-        }
-        return; // handled
-      }
-
-      // ----- F key flashlight (unchanged) -----
       if (event.code === 'KeyF') {
         event.preventDefault();
-        if (paused) return; 
+        if (paused) return;
         const flashlightState = this.hud.getFlashlightState();
 
+        // Only play sound if player has obtained the flashlight
         if (flashlightState.hasFlashlight) {
           const isOn = this.hud.toggleFlashlight();
-          this.playFlashlightSwitchSound();
+          this.playFlashlightSwitchSound(); // Play switch sound
           this.updateFlashlightInScene(isOn);
         }
       }
 
-      // ----- P key pause (unchanged) -----
+      // P key for pause menu
       if (event.code === 'KeyP') {
         event.preventDefault();
-        const isPaused = this.togglePause();
+        const isPaused = this.togglePause();  // updates HUD state
         if (isPaused && this.controls) {
           this.controls.unlock();
         }
@@ -117,11 +80,31 @@ export class GameController {
     window.addEventListener('generator:triggered', () => {
       this.triggerGenerator();
     });
+
+    //listen for battery depletuon event
+    window.addEventListener('battery:depleted', () => {
+      // Auto turn off flashlight in scene
+      this.handleGameOver();
+    });
+
+    // End the level when level3 exit is triggered
+    window.addEventListener('level3:exit', () => {
+      this.onLevel3ExitReached();
+    });
+
   }
 
   // Handle object interactions from main.js
-  handleInteraction(object) {
+  handleInteraction(object)
+  {
     if (!object.userData.interactable) return;
+
+    // Exit door (level 3)
+    if (object.userData?.interactionType === 'exit') {
+      // allow both: main calling handleInteraction, or node.userData.onInteract hitting the event
+      this.onLevel3ExitReached();
+      return;
+    }
 
     switch (object.name) {
       case 'Flash_Light_Body_high':
@@ -132,81 +115,139 @@ export class GameController {
           this.hud.showMessage('The flashlight seems to need power first...', 2000);
           return;
         }
-        
+
         this.playPickupSound(); // Play sound effect
         this.hud.onFlashlightInteraction();
+        // Remove all flashlight parts from the scene (picked up)
         this.removeFlashlightParts();
+
+        //no main lights since the flashlight is picked up
         this.dimSceneLights(true);
-        
+
         // Complete flashlight objective and show next objective
         this.onFlashlightPickedUp();
-        
+
         // Play scary scream 0.5 seconds after pickup
         setTimeout(() => {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
-
-      case 'AA Battery.001':
-        this.hud.onBatteryInteraction();
-        this.scene.remove(object);
-        break;
-
       default:
-        // Generator
-        if (object.name === "powerpulse1") {
+
+      //batteries
+
+      if (object.name && object.name.toLowerCase().includes('battery'))
+      {
+        this.playPickupSound();
+        const barsToAdd = 3;
+        this.hud.restoreBatteryLife(barsToAdd);
+        this.removeBattery(object);
+        console.log('[Battery] Picked up ${object.name}, restored ${barsToAdd} battery bars');
+        break;
+      }
+        // Doors via E: only allow if door requires E; show hint if door requires T
+        if (object.userData?.toggleDoor && object.userData?.isDoor) {
+          const req = object.userData.requiredKey || "E";
+          if (req === "E") {
+            try { object.userData.toggleDoor(); } catch (e) { console.warn('[Door-E] toggleDoor error:', e); }
+          } else if (req === "T") {
+            this.hud?.showMessage?.("Press T to interact", 1200);
+            // remember it so KeyT can still close it even if not "nearest" later
+            this._lastDoorT = object;
+          }
+          break;
+        }
+
+          // Only activate if generator hasn't been used before
           if (!this.generatorActivated) {
+            // Play generator sound immediately (only once)
             this.playGeneratorSound();
+
+            // Mark as activated immediately to prevent re-use
             this.generatorActivated = true;
+
+            // Remove interactable property so it can't be used again
             object.userData.interactable = false;
-            
+
             // Refresh the interactable cache to remove this object from prompts
             if (window.refreshInteractableCache) {
               window.refreshInteractableCache();
             }
-            
+
             // Activate emergency lighting after 3 seconds
             setTimeout(() => {
               this.setLightingState('emergency'); // Switch to red lights
-              
+
               // Complete power objective and show next objective
               this.onPowerTurnedOn();
-              
+
               console.log(`[Generator] Emergency lights activated after delay: ${object.name}`);
             }, 3000); // 3 seconds delay
-            
-            console.log(`[Generator] Generator started, emergency lights will activate in 3 seconds: ${object.name}`);
+
+              console.log(`[Generator] Generator started, emergency lights will activate in 3 seconds: ${object.name}`);
           }
-        }
         break;
     }
-  }
+ }
 
+  removeBattery(object)
+  {
+    if (!object) return;
+
+    if (object.parent)
+    {
+      object.parent.remove(object);
+    }
+
+    if (object.userData.aura && object.parent)
+    {
+        object.parent.remove(object.userData.aura);
+    }
+
+    const interactionIndicator = document.getElementById('interaction-indicator');
+    if (interactionIndicator) {
+      interactionIndicator.style.display = 'none';
+    }
+    console.log('[Battery]  removed ${object.name} from scene after pickup');
+  }
   // Update the actual flashlight in the 3D scene
   updateFlashlightInScene(isOn) {
     const flashlightState = this.hud.getFlashlightState();
+
     if (!flashlightState.hasFlashlight) return;
 
     if (isOn && flashlightState.energy > 0) {
+      // Create or enable flashlight
       this.flashlight.visible = true;
       this.flashlight.intensity = Math.max(0.1, flashlightState.energy / 100);
     } else {
-      this.flashlight.visible = false;
+      // Disable flashlight
+        this.flashlight.visible = false;
     }
   }
 
   // Update method to be called in the main animation loop
   update() {
+    const direction = new THREE.Vector3();
+    this.camera.getWorldDirection(direction);
+
     if (this.flashlight) {
       this.flashlight.position.copy(this.camera.position);
-      const direction = new THREE.Vector3();
-      this.camera.getWorldDirection(direction);
-      const targetPos = this.camera.position.clone().add(direction.multiplyScalar(10));
+
+      // Aim flashlight where the camera is facing
+      const targetPos = this.camera.position.clone().add(direction.clone().multiplyScalar(10));
       this.flashlight.target.position.copy(targetPos);
+
       const flashlightState = this.hud.getFlashlightState();
       this.flashlight.visible = flashlightState.isOn && flashlightState.energy > 0;
       this.flashlight.intensity = Math.max(0.1, flashlightState.energy / 100);
+
+      if (this.lights.updateFlashlightBeam) {
+        this.lights.updateFlashlightBeam();
+      }
     }
+
+    this.hud.updateMinimap(this.camera.position, direction);
   }
 
   // Lighting state management
@@ -215,29 +256,88 @@ export class GameController {
 
     switch(state) {
       case 'normal':
+        // Normal lighting: ambient and directional lights on, red lights off
         if(this.lights.hemi) this.lights.hemi.intensity = 0.8;
         if(this.lights.dirLight) this.lights.dirLight.intensity = 1.2;
         if(this.lights.redLights) {
-          this.lights.redLights.forEach(light => { light.intensity = 0; });
+          this.lights.redLights.forEach(light => {
+            light.intensity = 0;
+          });
         }
         break;
+
       case 'dark':
+        // Dark mode: all lights off (flashlight picked up)
         if(this.lights.hemi) this.lights.hemi.intensity = 0;
         if(this.lights.dirLight) this.lights.dirLight.intensity = 0;
         if(this.lights.redLights) {
-          this.lights.redLights.forEach(light => { light.intensity = 0; });
+          this.lights.redLights.forEach(light => {
+            light.intensity = 0;
+          });
         }
         break;
+
       case 'emergency':
+        // Emergency mode: ambient lights dim, red lights on
         if(this.lights.hemi) this.lights.hemi.intensity = 0.1;
         if(this.lights.dirLight) this.lights.dirLight.intensity = 0.2;
         if(this.lights.redLights) {
-          this.lights.redLights.forEach(light => { light.intensity = 4; });
+          this.lights.redLights.forEach(light => {
+            light.intensity = 4;
+          });
         }
         break;
+
+      case 'flashing':
+        this.startRoomFlashing();
+        break;
+
     }
   }
 
+  dimSceneLights(dim=true){ this.setLightingState(dim ? 'dark' : 'normal'); }
+
+//flashing light code
+
+startRoomFlashing() {
+  if (!this.lights) return;
+  if (this.flashTimeout) clearTimeout(this.flashTimeout);
+
+  const flashOnDuration = 3000;  // 3 seconds on
+  const flashOffDuration = 2000; // 2 seconds off
+
+  const flashCycle = () => {
+    // Turn room lights ON
+    if (this.lights.hemi) this.lights.hemi.color.set(0xff0000); // red
+    if (this.lights.dirLight) this.lights.dirLight.color.set(0xff0000);
+    if (this.lights.hemi) this.lights.hemi.intensity = 0.8; // adjust as needed
+    if (this.lights.dirLight) this.lights.dirLight.intensity = 1.2;
+
+    // Schedule lights OFF
+    this.flashTimeout = setTimeout(() => {
+      if (this.lights.hemi) this.lights.hemi.intensity = 0;
+      if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
+
+      // Schedule next ON
+      this.flashTimeout = setTimeout(flashCycle, flashOffDuration);
+    }, flashOnDuration);
+  };
+
+  flashCycle(); // start the cycle
+}
+
+stopRoomFlashing() {
+  if (this.flashTimeout) {
+    clearTimeout(this.flashTimeout);
+    this.flashTimeout = null;
+  }
+
+  // Reset lights to OFF (or normal state if desired)
+  if (this.lights) {
+    if (this.lights.hemi) this.lights.hemi.intensity = 0;
+    if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
+  }
+}
   // Getter for flashlight state
   get hasFlashlight() {
     const flashlightState = this.hud.getFlashlightState();
@@ -251,82 +351,152 @@ export class GameController {
   }
 
   //lights off when torch picked up (keeping old method for backwards compatibility)
-  dimSceneLights(dim=true)
-  {
-    this.setLightingState(dim ? 'dark' : 'normal');
-  }
 
+  // Trigger generator and switch to emergency lighting
   triggerGenerator() {
     console.log('Generator triggered - switching to emergency lighting');
+
+    // Play generator sound effect if available
     const generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
     generatorSound.volume = 0.7;
-    generatorSound.play().catch(() => console.log('Generator sound failed to play'));
+    generatorSound.play().catch(() => {
+      console.log('Generator sound failed to play');
+    });
+
+    // Switch to emergency lighting (red lights)
     this.setLightingState('emergency');
+
+    // Dispatch event to notify other systems
     window.dispatchEvent(new CustomEvent('generator:activated'));
   }
 
+  // Enable generator interaction after flashlight is obtained
   enableGeneratorInteraction() {
     console.log('[Generator] Looking for generator to enable...');
     let generatorFound = false;
+
     this.scene.traverse((child) => {
       if (child.name === "powerpulse1") {
+        console.log(`[Generator] Found powerpulse1 object, potentiallyInteractable: ${child.userData.potentiallyInteractable}, interactable: ${child.userData.interactable}`);
+
+        // Make it interactable regardless of potentiallyInteractable flag
         child.userData.interactable = true;
         generatorFound = true;
         console.log('[Generator] Generator is now interactable after flashlight pickup');
       }
     });
-    if (!generatorFound) console.log('[Generator] WARNING: powerpulse1 not found in scene!');
-    if (window.updateInteractableCache) window.updateInteractableCache();
+
+    if (!generatorFound) {
+      console.log('[Generator] WARNING: powerpulse1 object not found in scene!');
+    }
+
+    // Force refresh the entire cache
+    if (window.updateInteractableCache) {
+      console.log('[Generator] Refreshing interactable cache...');
+      window.updateInteractableCache();
+    } else {
+      console.log('[Generator] WARNING: updateInteractableCache not available!');
+    }
   }
 
   enableFlashLightInteraction() {
-    console.log('[Flashlight] Enabling flashlight pickups...');
+    console.log('[Flashlight] Looking for generator to enable...');
     let flashlightFound = false;
+
     this.scene.traverse((child) => {
       if (child.name === "Flashlight Camping" ||
-          child.name === "Flash_Light_Body_high" || 
-          child.name === "Flash_Light_Cover_high" || 
-          child.name === "Flash_Light_Metal_high" || 
-          child.name === "AA Battery.001") {
+              child.name === "Flash_Light_Body_high" ||
+              child.name === "Flash_Light_Cover_high" ||
+              child.name === "Flash_Light_Metal_high" ||
+              child.name === "AA Battery.001") {
+        console.log(`[Flashlight] Found flashlight objects, potentiallyInteractable: ${child.userData.potentiallyInteractable}, interactable: ${child.userData.interactable}`);
+
+        // Make it interactable regardless of potentiallyInteractable flag
         child.userData.interactable = true;
         flashlightFound = true;
+        console.log('[Flashlight] Generator is now interactable after flashlight pickup');
       }
     });
-    if (!flashlightFound) console.log('[Flashlight] WARNING: flashlight parts not found!');
-    if (window.updateInteractableCache) window.updateInteractableCache();
+
+    if (!flashlightFound) {
+      console.log('[Flashlight] WARNING: powerpulse1 object not found in scene!');
+    }
+
+    // Force refresh the entire cache
+    if (window.updateInteractableCache) {
+      console.log('[Flashlight] Refreshing interactable cache...');
+      window.updateInteractableCache();
+    } else {
+      console.log('[Flashlight] WARNING: updateInteractableCache not available!');
+    }
   }
 
+  // Play generator sound effect
   playGeneratorSound() {
+    // Reset the sound to beginning in case it's already playing
     this.generatorSound.currentTime = 0;
-    this.generatorSound.play().catch(() => console.log('[Generator] Failed to play generator sound'));
-  }
-  playScaryScream() {
-    this.scaryScreamSound.currentTime = 0;
-    this.scaryScreamSound.play().catch(() => console.log('[ScaryScream] Failed to play scream'));
-  }
-  playPickupSound() {
-    this.itemPickupSound.currentTime = 0;
-    this.itemPickupSound.play().catch(() => {});
-  }
-  playFlashlightSwitchSound() {
-    this.flashlightSwitchSound.currentTime = 0;
-    this.flashlightSwitchSound.play().catch(() => {});
+
+    // Play the sound
+    this.generatorSound.play().catch(() => {
+      // Sound failed to play
+      console.log('[Generator] Failed to play generator sound');
+    });
   }
 
+  // Play scary scream sound effect
+  playScaryScream() {
+    // Reset the sound to beginning in case it's already playing
+    this.scaryScreamSound.currentTime = 0;
+
+    // Play the sound
+    this.scaryScreamSound.play().catch(() => {
+      // Sound failed to play
+      console.log('[ScaryScream] Failed to play scary scream sound');
+    });
+  }
+
+  // Play pickup sound effect
+  playPickupSound() {
+    // Reset the sound to beginning in case it's already playing
+    this.itemPickupSound.currentTime = 0;
+
+    // Play the sound
+    this.itemPickupSound.play().catch(() => {
+      // Sound failed to play
+    });
+  }
+
+  // Play flashlight switch sound effect
+  playFlashlightSwitchSound() {
+    // Reset the sound to beginning in case it's already playing
+    this.flashlightSwitchSound.currentTime = 0;
+
+    // Play the sound
+    this.flashlightSwitchSound.play().catch(() => {
+      // Sound failed to play
+    });
+  }
+
+  // Method to add new objectives dynamically
   addObjective(text) {
     const newId = this.hud.objectives.length + 1;
     this.hud.objectives.push({ id: newId, text, completed: false });
     this.hud.updateObjectivesDisplay();
     return newId;
   }
+
+  // Method to complete objectives by text or id
   completeObjective(identifier) {
     if (typeof identifier === 'string') {
       const objective = this.hud.objectives.find(obj => obj.text === identifier);
-      if (objective) this.hud.completeObjective(objective.id);
+      if (objective) {
+        this.hud.completeObjective(objective.id);
+      }
     } else {
       this.hud.completeObjective(identifier);
     }
   }
+
   // Battery management methods
   setBatteryDrainTime(seconds) {
     this.hud.setBatteryDrainTime(seconds);
@@ -357,17 +527,46 @@ export class GameController {
     const flashlightParts = ['Flash_Light_Body_high', 'Flash_Light_Cover_high', 'Flash_Light_Metal_high'];
     const objectsToRemove = [];
     const aurasToRemove = [];
+
+    // Collect all objects to remove first
     this.scene.traverse((child) => {
       if (flashlightParts.includes(child.name)) {
         objectsToRemove.push(child);
-        if (child.userData.aura) aurasToRemove.push({ aura: child.userData.aura, parent: child.parent });
+
+        // Collect aura if it exists
+        if (child.userData.aura) {
+          aurasToRemove.push({ aura: child.userData.aura, parent: child.parent });
+        }
       }
     });
-    aurasToRemove.forEach(({ aura, parent }) => { if (parent) parent.remove(aura); });
-    objectsToRemove.forEach((object) => { if (object.parent) object.parent.remove(object); });
+
+    // Remove all collected auras
+    aurasToRemove.forEach(({ aura, parent }) => {
+      if (parent) {
+        parent.remove(aura);
+      }
+    });
+
+    // Remove all collected flashlight parts
+    objectsToRemove.forEach((object) => {
+      if (object.parent) {
+        object.parent.remove(object);
+      }
+    });
+
+    // Hide the interaction prompt
     const interactionIndicator = document.getElementById('interaction-indicator');
-    if (interactionIndicator) interactionIndicator.style.display = 'none';
+    if (interactionIndicator) {
+      interactionIndicator.style.display = 'none';
+    }
   }
+
+  // Toggle pause menu
+  togglePause() {
+    const isPaused = this.hud.togglePause();
+    return isPaused;
+  }
+
 
   // Get pause state
   isPaused() {
@@ -381,7 +580,7 @@ export class GameController {
       { id: 1, text: "Turn on the power", completed: false }
     ];
     this.hud.updateObjectivesDisplay();
-    
+
     console.log('[Objectives] Initialized with first objective: Turn on the power');
   }
 
@@ -394,39 +593,40 @@ export class GameController {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Level2 Objectives] Initialized with first objective: Find a clue to open office door');
+
   }
 
   // Called when power is turned on (red lights appear)
   onPowerTurnedOn() {
     this.powerTurnedOn = true;
-    
+
     // Complete "Turn on power" objective
     this.completeObjective(1);
-    
+
     // Add next objective
     this.hud.objectives.push({ id: 2, text: "Find the Flashlight", completed: false });
     this.hud.updateObjectivesDisplay();
-    
+
     // Make flashlight interactable now that power is on
     this.enableFlashLightInteraction();
-    
+
     console.log('[Objectives] Power turned on - added flashlight objective');
   }
 
   // Called when flashlight is picked up
   onFlashlightPickedUp() {
     this.flashlightPickedUp = true;
-    
+
     // Complete "Find the Flashlight" objective
     this.completeObjective(2);
-    
+
     // Add final objective
     this.hud.objectives.push({ id: 3, text: "Enter the elevator", completed: false });
     this.hud.updateObjectivesDisplay();
-    
+
     // Activate elevator so player can go to next level
     this.activateElevator();
-    
+
     console.log('[Objectives] Flashlight picked up - added elevator objective');
   }
 
@@ -434,11 +634,11 @@ export class GameController {
   onEmailViewed() {
     // Complete "Find Keycard" objective and add office code objective
     this.completeObjective(1);
-    
+
     // Add next objective
     this.hud.objectives.push({ id: 2, text: "Figure out the office code", completed: false });
     this.hud.updateObjectivesDisplay();
-    
+
     console.log('[Level2] Email viewed - added office code objective');
   }
 
@@ -446,11 +646,11 @@ export class GameController {
   onOfficeCodeEntered() {
     // Complete "Figure out the office code" objective
     this.completeObjective(2);
-    
+
     // Add safebox objective
     this.hud.objectives.push({ id: 3, text: "Find a way to open the safebox", completed: false });
     this.hud.updateObjectivesDisplay();
-    
+
     console.log('[Level2] Office code entered - added safebox objective');
   }
 
@@ -458,11 +658,11 @@ export class GameController {
   onSafeboxCodeEntered() {
     // Complete "Find a way to open the safebox" objective
     this.completeObjective(3);
-    
+
     // Add final objective
     this.hud.objectives.push({ id: 4, text: "Open the Main door", completed: false });
     this.hud.updateObjectivesDisplay();
-    
+
     console.log('[Level2] Safebox opened - added main door objective');
   }
 
@@ -470,7 +670,7 @@ export class GameController {
   onMainDoorOpened() {
     // Complete final objective
     this.completeObjective(4);
-    
+
     console.log('[Level2] Main door opened - all objectives complete!');
   }
 
@@ -494,5 +694,39 @@ export class GameController {
         console.log('[Generator] Made generator interactable from start');
       }
     });
+  }
+
+  onLevel3ExitReached() {
+    // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
+    this.completeObjective(1);
+    this.showEndCredits();
+    console.log('[Level3] Exit reached – rolling credits');
+  }
+
+  showEndCredits() {
+    try {
+      this.controls?.unlock();
+    } catch (err) {
+      console.warn('[GameController] Failed to unlock controls before credits:', err);
+    }
+
+    showCreditsOverlay({ restartOnFinish: true });
+  }
+
+  //game over
+  handleGameOver()
+  {
+    console.log('[GameController] Game Over triggered - battery depleted');
+    this.flashlight.visible = false;
+
+    if (this.controls)
+    {
+      this.controls.unlock();
+    }
+
+    this.hud.showGameOverScreen();
+  setTimeout(() => {
+    this.playScaryScream();
+  }, 300);
   }
 }

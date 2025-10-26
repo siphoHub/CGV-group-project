@@ -1,11 +1,16 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
 import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
+import { StartScreen } from "./gameplay/startScreen.js";
+
+import { cutscene12 } from "./gameplay/cutscene12.js";    
+import { cutscene23 } from "./gameplay/cutscene23.js";
+
 
 addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
@@ -14,11 +19,12 @@ addEventListener("keydown", (e) => {
   
   // L key for level progression
   if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
-    progressToLevel2(scene, gameController, camera).then(success => {
-      if (success) {
-        console.log("[Main] Successfully progressed to Level 2");
-      }
-    });
+    // Immediately transition to Level 3 (blenderL3) when L is pressed
+    transitionToLevel('level3', scene, gameController, camera, 'Entering the experiment testing room')
+      .then(success => {
+        if (success) console.log('[Main] Successfully progressed to Level 3');
+        else console.warn('[Main] Failed to progress to Level 3');
+      });
   }
 });
 
@@ -60,6 +66,7 @@ camera.position.set(0,1.7,-5);
 camera.lookAt(0, 1.7, 0);
 
 
+
 // --- Dev helpers (ignored by interaction) ---
 // Controls (we also grab setColliders)
 const { controls, update, setColliders } = createControls(camera, renderer.domElement);
@@ -83,9 +90,45 @@ window.addEventListener("level:colliders", (e) => {
 // Initialize DoorManager when Level 2 is loaded
 window.addEventListener("level:loaded", (e) => {
   const levelName = e.detail?.levelName;
-  if (levelName === "level2") {
-    console.log("[main] Level 2 loaded, initializing DoorManager...");
+  if (levelName === "level2" || levelName === 'level3') {
+    console.log(`[main] ${levelName} loaded, initializing DoorManager...`);
     initializeDoorManager();
+  }
+});
+
+// Listen for keycard usage event from level2 and transition to level3 with a custom message
+window.addEventListener('keycard:used', async (e) => {
+  const detail = e.detail || {};
+  const target = detail.targetLevel || 'level3';
+  const message = detail.loadingMessage || 'Loading...';
+  console.log('[main] Keycard used, transitioning to', target, 'with message:', message);
+
+  // Use the level loader to show the custom message and load target
+  // We rely on loadLevel to accept side-effects; show loading screen first
+  const loadingEl = document.getElementById('loading-screen');
+  if (loadingEl) {
+    // Update message if loading screen already exists
+    const p = loadingEl.querySelector('.loading-content p');
+    if (p) p.textContent = message;
+    loadingEl.style.display = 'flex';
+  } else {
+    // Create a simple loading screen if none exists
+    const ls = document.createElement('div');
+    ls.id = 'loading-screen';
+    ls.innerHTML = `<div class="loading-content"><h2>LOADING...</h2><div class="loading-spinner"></div><p>${message}</p></div>`;
+    ls.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.9);z-index:10000;color:white;font-family:monospace;';
+    document.body.appendChild(ls);
+  }
+
+  try {
+    const success = await transitionToLevel(target, scene, gameController, camera, message);
+    if (success) {
+      console.log('[main] Transition to', target, 'complete');
+    } else {
+      console.warn('[main] Transition to', target, 'failed');
+    }
+  } catch (err) {
+    console.error('[main] Error during keycard transition:', err);
   }
 });
 
@@ -205,6 +248,21 @@ function toggleBackgroundMusic() {
   }
 }
 
+function updateCoordinateHud() {
+  if (!coordHud || !coordHudVisible || !camera) return;
+  const pos = camera.position;
+  coordHud.textContent = `X: ${pos.x.toFixed(2)} | Y: ${pos.y.toFixed(2)} | Z: ${pos.z.toFixed(2)}`;
+}
+
+function toggleCoordinateHud() {
+  if (!coordHud) return;
+  coordHudVisible = !coordHudVisible;
+  coordHud.style.display = coordHudVisible ? 'block' : 'none';
+  if (coordHudVisible) {
+    updateCoordinateHud();
+  }
+}
+
 // --- Keycode Sound Effects ---
 let accessGrantedSound = null;
 let accessDeniedSound = null;
@@ -232,37 +290,97 @@ function playAccessDeniedSound() {
   accessDeniedSound.play().catch(err => console.log("Failed to play access denied sound:", err));
 }
 
-// --- Start Music ---
-startBackgroundMusic();
-
-// --- Cutscene + parallel level load ---
-const cutscene = new OpeningCutscene();
+let cutscene = null;
 let levelLoaded = false;
 let readyToInit = false;
+let hasGameStarted = false;
 
-// Start cutscene with parallel level loading
-cutscene.play(
-  // Callback when cutscene completes
-  () => {
-    // Stop cutscene music the moment cutscene finishes/skips
+// Schedule cutscene to to play and then 15seconds in, level must start loading
+let cutsceneLoadTimer = null;
+let levelLoadStarted = false;
+let levelLoadPromise = null;
 
-    if (levelLoaded) {
-      initializeGame(lights);
-      fadeBackgroundMusic();
-    } else {
-      readyToInit = true; // Mark that we're ready to initialize when level loads
-    }
-  },
-  // Callback to start level loading during cutscene
-  () => {
-    loadLevelInBackground();
+function startLevelLoad() {
+  if (levelLoaded) return levelLoadPromise || Promise.resolve();
+  if (levelLoadPromise) return levelLoadPromise;
+
+  levelLoadStarted = true;
+  if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
+    cutsceneLoadTimer = null;
   }
-);
+  console.log('[Main] Starting level load (triggered by cutscene timing)');
+  try {
+    levelLoadPromise = loadLevelInBackground().catch((err) => {
+      // allow retries if initial load fails
+      levelLoadStarted = false;
+      levelLoadPromise = null;
+      throw err;
+    }).finally(() => {
+      if (levelLoaded) {
+        levelLoadStarted = false;
+      }
+    });
+    return levelLoadPromise;
+  } catch (err) {
+    console.warn('[Main] loadLevelInBackground failed to start:', err);
+    levelLoadStarted = false;
+    levelLoadPromise = null;
+    return Promise.reject(err);
+  }
+}
+
+function beginGameFlow() {
+  if (hasGameStarted) {
+    return;
+  }
+  hasGameStarted = true;
+
+  startBackgroundMusic();
+
+  cutscene = new OpeningCutscene();
+  levelLoaded = false;
+  readyToInit = false;
+  levelLoadStarted = false;
+  levelLoadPromise = null;
+
+  // Start cutscene with parallel level loading
+  cutscene.play(
+    () => {
+      if (levelLoaded) {
+        initializeGame(lights);
+        fadeBackgroundMusic();
+      } else {
+        readyToInit = true;
+      }
+    },
+    () => {
+      startLevelLoad();
+    }
+  );
+
+  if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
+  }
+  cutsceneLoadTimer = setTimeout(() => {
+    cutsceneLoadTimer = null;
+    if (!levelLoaded && !levelLoadPromise) {
+      console.log('[Main] 15s elapsed during cutscene — starting level load now');
+      startLevelLoad();
+    }
+  }, 15000);
+}
 
 let gameController;
 let lights;
 
 async function loadLevelInBackground() {
+  if (levelLoaded) {
+    return;
+  }
+  if (levelLoadPromise && levelLoadStarted) {
+    return levelLoadPromise;
+  }
 
   // Load the level
   await loadLevel("level1", scene);
@@ -283,6 +401,7 @@ async function loadLevelInBackground() {
 
   levelLoaded = true;
   console.log("Level loaded!");
+  levelLoadStarted = false;
 
   // If cutscene already finished, initialize game now
   if (readyToInit) {
@@ -291,6 +410,8 @@ async function loadLevelInBackground() {
 }
 // --- Game init (HUD + interaction loop) --
 let interactionIndicator;
+let coordHud;
+let coordHudVisible = false;
 
 function initializeGame(lights) {
   // place player at spawn (you can tune this)
@@ -300,7 +421,8 @@ function initializeGame(lights) {
   console.log('[Game] Game initialized, DoorManager will be set up when Level 2 loads');
 
   document.addEventListener("keydown", (e) => { 
-    if (e.code === "KeyM") toggleBackgroundMusic(); 
+    if (e.code === "KeyM") toggleBackgroundMusic();
+    if (e.code === "KeyV") toggleCoordinateHud();
   });
 
   // interaction indicator UI
@@ -314,6 +436,18 @@ function initializeGame(lights) {
     display:none;
   `;
   document.body.appendChild(interactionIndicator);
+
+  if (!coordHud) {
+    coordHud = document.createElement('div');
+    coordHud.id = 'coord-hud';
+    coordHud.style.cssText = `
+      position: fixed; right: 16px; top: 16px; padding: 8px 12px;
+      background: rgba(20, 20, 30, 0.85); color: #0ff; font-family: monospace;
+      font-size: 13px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      display: none; pointer-events: none; z-index: 1300; letter-spacing: 0.5px;
+    `;
+    document.body.appendChild(coordHud);
+  }
 
   // Create keycode interface
   const keycodeInterface = document.createElement("div");
@@ -492,6 +626,163 @@ function initializeGame(lights) {
 
   document.body.appendChild(safeboxInterface);
 
+      // --- Log viewer UI---
+  (function createLogViewer() {
+    const logViewer = document.createElement('div');
+    logViewer.id = 'log-viewer';
+    logViewer.style.cssText = `
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.92); z-index: 3000; padding: 30px; box-sizing: border-box;
+    `;
+    logViewer.innerHTML = `
+      <div id="log-viewer-inner" style="max-width:1100px; width:100%; max-height:90%; overflow:hidden; background:#0b0b0b; border-radius:10px; padding:10px; box-shadow:0 10px 40px rgba(0,0,0,.8); display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:flex-end;">
+          <button id="log-close-btn" style="background:#c0392b; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;">Close</button>
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:12px; padding:10px;">
+          <button id="log-prev" aria-label="previous" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">◀</button>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; max-width:920px;">
+            <img id="log-image" src="" alt="" style="width:100%; height:auto; display:block; border-radius:6px; background:#000; max-height:78vh; object-fit:contain;" />
+            <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+              <p id="log-caption" style="color:#ddd; margin:0; font-family:monospace; font-size:14px;"></p>
+              <p id="log-pager" style="color:#bbb; margin:0; font-family:monospace; font-size:13px;"></p>
+            </div>
+          </div>
+          <button id="log-next" aria-label="next" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">▶</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(logViewer);
+
+    // map object names (or ids) to arrays of image paths + caption
+    const LOG_IMAGE_MAP = {
+      'testingRoom1_Log1': {
+        images: ['/models/assets/logs/testingRoom1_Log1.png'
+        ],
+        caption: 'Log — Testing Room 1'
+      },
+      'testingRoom1_Log2': {
+        images: ['/models/assets/logs/testingRoom1_Log2.png'],
+        caption: 'Log — Testing Room 1 (2)'
+      },
+      'testingRoom2_Log1': {
+        images: ['/models/assets/logs/testingRoom2_Log1.png',
+          '/models/assets/logs/testingRoom2_Log2.png'
+        ],
+        caption: 'Log — Testing Room 2'
+      },
+      'testingRoom2_Log2': {
+        images: ['/models/assets/logs/testingRoom2_Log3.png'],
+        caption: 'Log — Testing Room 2 (2)'
+      },
+      
+      'office1_Log1': {
+        images: [
+          '/models/assets/logs/office1_Log1.png',
+          '/models/assets/logs/office1_Log2.png'
+        ],
+        caption: 'Notes'
+      },
+      'office2_Log2': {
+        images: ['/models/assets/logs/office2_Log1.png',
+          '/models/assets/logs/office2_Log2.png',
+          '/models/assets/logs/office2_Log3.png'
+        ],
+        caption: 'Office 2 Log'
+      }
+      // add more mappings as needed
+    };
+
+    // Preload images
+    Object.values(LOG_IMAGE_MAP).forEach(entry => {
+      entry.images.forEach(src => { const img = new Image(); img.src = src; });
+    });
+
+    const viewerEl = document.getElementById('log-viewer');
+    const imgEl = document.getElementById('log-image');
+    const captionEl = document.getElementById('log-caption');
+    const pagerEl = document.getElementById('log-pager');
+    const closeBtn = document.getElementById('log-close-btn');
+    const prevBtn = document.getElementById('log-prev');
+    const nextBtn = document.getElementById('log-next');
+
+    let currentLogKey = null;
+    let currentIndex = 0;
+    let currentImages = [];
+
+    function updatePager() {
+      pagerEl.textContent = currentImages.length > 1 ? `${currentIndex + 1} / ${currentImages.length}` : '';
+      prevBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
+      nextBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
+    }
+
+    function showIndex(i) {
+      if (!currentImages || currentImages.length === 0) return;
+      currentIndex = (i + currentImages.length) % currentImages.length;
+      imgEl.src = currentImages[currentIndex];
+      imgEl.alt = `${currentLogKey} (${currentIndex + 1})`;
+      updatePager();
+    }
+
+    function openLogViewer(key) {
+      const entry = LOG_IMAGE_MAP[key] || null;
+      if (entry) {
+        currentLogKey = key;
+        currentImages = entry.images.slice();
+        captionEl.textContent = entry.caption || key;
+      } else {
+        // fallback
+        currentLogKey = key;
+        currentImages = ['/models/assets/logs/log_placeholder.png'];
+        captionEl.textContent = `Log: ${key}`;
+      }
+      showIndex(0);
+      viewerEl.style.display = 'flex';
+      // allow keyboard navigation
+      document.addEventListener('keydown', keyNavHandler);
+      // Unlock controls so UI can receive clicks/keys
+      try { controls.unlock(); } catch {}
+    }
+
+    function closeLogViewer() {
+      viewerEl.style.display = 'none';
+      imgEl.src = '';
+      currentLogKey = null;
+      currentImages = [];
+      currentIndex = 0;
+      document.removeEventListener('keydown', keyNavHandler);
+      // Re-lock pointer
+      try { controls.lock(); } catch {}
+    }
+
+    function prev() { showIndex(currentIndex - 1); }
+    function next() { showIndex(currentIndex + 1); }
+
+    function keyNavHandler(e) {
+      if (viewerEl.style.display !== 'flex') return;
+      if (e.code === 'ArrowLeft') { e.preventDefault(); prev(); }
+      if (e.code === 'ArrowRight') { e.preventDefault(); next(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeLogViewer(); }
+    }
+
+    closeBtn.addEventListener('click', closeLogViewer);
+    prevBtn.addEventListener('click', prev);
+    nextBtn.addEventListener('click', next);
+
+    // click outside inner -> close
+    viewerEl.addEventListener('click', (e) => {
+      if (e.target === viewerEl) closeLogViewer();
+    });
+
+    // expose helper globally so interaction code can call it
+    window.showLogImage = function(name) {
+      openLogViewer(name);
+    };
+  })();
+
+
+
+
   // Note interface functions
   window.closeNote = function() {
     noteInterface.style.display = 'none';
@@ -647,6 +938,33 @@ function initializeGame(lights) {
     } else {
       console.warn('[Door] DoorManager not initialized when trying to unlock officeDoor2');
     }
+    // Ensure the mesh itself is marked interactable and cached so HUD shows the prompt
+    try {
+      const mesh = scene.getObjectByName('officeDoor2');
+      if (mesh) {
+        mesh.userData.interactable = true;
+        mesh.userData.interactionType = 'door';
+        // Remove any custom getInteractLabel so default 'Press E to open door' is shown
+        if (typeof mesh.userData.getInteractLabel === 'function') delete mesh.userData.getInteractLabel;
+        // Refresh cached interactables so the indicator system picks it up immediately
+        if (typeof refreshInteractableCache === 'function') refreshInteractableCache();
+        console.log('[Door] officeDoor2 mesh marked interactable and cache refreshed');
+      } else {
+        console.warn('[Door] officeDoor2 mesh not found in scene while unlocking');
+      }
+    } catch (err) { console.warn('[Door] Error ensuring officeDoor2 interactable', err && err.message); }
+    // Also disable the keycode terminal so it cannot be reused after successful entry
+    try {
+      const keypad = scene.getObjectByName('Object_7');
+      if (keypad) {
+        // mark as no longer interactable and change interactionType so HUD won't show 'Enter Code'
+        keypad.userData.interactable = false;
+        keypad.userData.interactionType = 'keycode-used';
+        // Refresh cache to remove it from the interactable list
+        if (typeof refreshInteractableCache === 'function') refreshInteractableCache();
+        console.log('[Keycode] Disabled Object_7 after successful code entry');
+      }
+    } catch (err) { console.warn('[Keycode] Error disabling Object_7', err && err.message); }
   }
 
   // key to interact (nearest-in-range)
@@ -654,25 +972,62 @@ function initializeGame(lights) {
   const interactionDistance = 1.8;
 
   document.addEventListener("keydown", (event) => {
-    if (event.code !== interactKey || !controls.isLocked) return;
+    if (event.code !== interactKey) return;
+    if (!controls.isLocked) {
+      console.log('[Interact] E pressed while controls unlocked – ignoring');
+      return;
+    }
 
     let nearest = null;
     let best = interactionDistance;
     scene.traverse((obj) => {
+      if (obj.userData?.interactionType === 'exit') {
+        const exitDist = computeInteractDistance(obj);
+        console.log('[Interact][scan exit]', {
+          name: obj.name,
+          uuid: obj.uuid,
+          dist: exitDist,
+          interactable: obj.userData?.interactable,
+          hasOnInteract: typeof obj.userData?.onInteract === 'function'
+        });
+      }
       if (obj.userData?.interactable) {
-        const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+        const d = computeInteractDistance(obj);
         if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
       }
     });
     
-    if (nearest) {
+  if (nearest) {
+      if (nearest.userData?.interactionType === 'exit') {
+        const dbg = (window.level3ExitNodes || []).map(n => `${n.name}:${n.uuid}`);
+        console.log('[Interact][exit] active exit nodes:', dbg);
+        console.log('[Interact][exit] nearest metadata:', {
+          name: nearest.name,
+          uuid: nearest.uuid,
+          interactable: nearest.userData.interactable,
+          hasGetLabel: typeof nearest.userData.getInteractLabel === 'function'
+        });
+      } else {
+        console.log('[Interact] E pressed. nearest=', nearest.name, 'interactionType=', nearest.userData?.interactionType, 'hasOnInteract=', typeof nearest.userData?.onInteract === 'function');
+      }
+      // Debug: list hinged doors
+      if (Array.isArray(window.levelHingedDoors)) {
+        console.log('[Interact] levelHingedDoors count=', window.levelHingedDoors.length, window.levelHingedDoors.map(h=>h.mesh.name));
+      }
       // Check if this is Object_7 (keycode terminal)
-      if (nearest.name === 'Object_7' && nearest.userData.interactionType === 'keycode') {
-        // Show keycode interface
-        keycodeInterface.style.display = 'block';
-        // Unlock controls so player can interact with UI
-        controls.unlock();
-        console.log('[Keycode] Opening security terminal interface');
+  if (nearest.name === 'Object_7' && nearest.userData.interactionType === 'keycode') {
+        // Require a tighter distance for the keycode terminal so player must be very close
+        const distToTerminal = camera.position.distanceTo(nearest.getWorldPosition(new THREE.Vector3()));
+        const KEYCODE_INTERACT_DISTANCE = 1.0; // meters (reduced from global interactionDistance)
+        if (distToTerminal > KEYCODE_INTERACT_DISTANCE) {
+          console.log(`[Keycode] Too far to interact (dist=${distToTerminal.toFixed(2)} > ${KEYCODE_INTERACT_DISTANCE})`);
+        } else {
+          // Show keycode interface
+          keycodeInterface.style.display = 'block';
+          // Unlock controls so player can interact with UI
+          controls.unlock();
+          console.log('[Keycode] Opening security terminal interface');
+        }
       } else if (nearest.name === 'defaultMaterial001_1' && nearest.userData.interactionType === 'computer') {
         // Show email interface
         emailInterface.style.display = 'block';
@@ -699,43 +1054,153 @@ function initializeGame(lights) {
         // Unlock controls so player can interact with UI
         controls.unlock();
         console.log('[SafeBox] Opening safe box interface');
+      } else if (nearest.userData.interactionType === 'exit') {
+        console.log('[Interact][exit] triggering exit on', nearest.name);
+        let handled = false;
+        if (typeof nearest.userData.onInteract === 'function') {
+          try { nearest.userData.onInteract(nearest); handled = true; } catch (e) { console.warn('[Interact][exit] onInteract failed', e); }
+        }
+        if (!handled && gameController) {
+          gameController.handleInteraction(nearest);
+        }
       } else if (nearest.userData.interactionType === 'door') {
-        // Handle door interaction with E key
-        handleDoorInteraction(nearest);
+        // Prefer calling object-defined interaction (e.g. HingedDoor provides onInteract)
+        if (typeof nearest.userData.onInteract === 'function') {
+          try { nearest.userData.onInteract(); } catch (e) { console.warn('onInteract failed', e); }
+        } else {
+          // Fallback to DoorManager lock/unlock toggle
+          handleDoorInteraction(nearest);
+        }
       } else if (nearest.name === 'Cube003_keyPad_0' && nearest.userData.interactionType === 'keycard-reader') {
         // Check if player has keycard
         if (gameController && gameController.hud && gameController.hud.hasKeycard) {
           console.log('[KeycardReader] Using keycard on reader');
-          // Add your keycard reader logic here
-          alert('Keycard used successfully!');
+          // Dispatch event to trigger level transition to level3 (blenderL3)
+          window.dispatchEvent(new CustomEvent('keycard:used', {
+            detail: { targetLevel: 'level3', loadingMessage: 'Entering the experiment testing room' }
+          }));
+          if (gameController.playPickupSound) gameController.playPickupSound();
         } else {
           console.log('[KeycardReader] No keycard in inventory');
         }
-      } else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
+      } 
+      else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
         // Check if flashlight has been obtained
         if (gameController && gameController.hasFlashlight) {
-          // Take elevator to level 2
-          console.log('[Elevator] Taking elevator to Level 2...');
-          progressToLevel2(scene, gameController, camera).then(success => {
-            if (success) {
-              console.log("[Elevator] Successfully progressed to Level 2");
+
+          //prevent double trigger
+          if (window._elevatorCutscenePlaying) return;
+          window._elevatorCutscenePlaying = true;
+
+          controls.unlock();
+
+          //play elevator cutscene and load level 2 in background
+          const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          elevatorCutscene.play(
+            () => {
+              console.log('[Elevator] Cutscene finished — progressing to Level 2...');
+
+
+              console.log('[Elevator] Taking elevator to Level 2...');
+                progressToLevel2(scene, gameController, camera).then(success => {
+                window._elevatorCutscenePlaying = false;
+
+                if (success) {
+                  console.log("[Elevator] Successfully progressed to Level 2");
+                };
+              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+            },
+            () => {
+              if (typeof loadLevelInBackground === 'function') {
+                loadLevelInBackground();
+              }
             }
-          });
+
+          );
+
+          // Take elevator to level 2
+         
+          
+          
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
-      } else {
+      }else if (nearest.userData.interactionType === 'map'){
+        if (nearest.userData.mapUnlocked) {
+          console.log('[Level3][Map] Map already collected, minimap should be active');
+          return;
+        }
+
+        if (gameController && typeof gameController.playPickupSound === 'function') {
+          gameController.playPickupSound();
+        }
+
+        const minimapDetail = (typeof window !== 'undefined'
+          ? window.__level3MinimapDetail || window.__pendingMinimapDetail
+          : null);
+
+        if (minimapDetail) {
+          if (typeof window !== 'undefined') {
+            window.__level3MinimapUnlocked = true;
+            window.__pendingMinimapDetail = minimapDetail;
+            window.dispatchEvent(new CustomEvent('minimap:configure', { detail: minimapDetail }));
+          }
+        } else {
+          console.warn('[Level3][Map] No minimap detail available to configure');
+        }
+
+        nearest.userData.mapUnlocked = true;
+        nearest.userData.interactable = false;
+        nearest.userData.interactionType = 'map-used';
+        if (nearest.userData.getInteractLabel) {
+          delete nearest.userData.getInteractLabel;
+        }
+
+        if (nearest.userData.mapHighlight) {
+          const highlight = nearest.userData.mapHighlight;
+          if (highlight && highlight.parent) {
+            highlight.parent.remove(highlight);
+          }
+          nearest.userData.mapHighlight = null;
+        }
+
+        if (nearest.parent) {
+          nearest.parent.remove(nearest);
+        } else {
+          nearest.visible = false;
+        }
+
+        if (typeof refreshInteractableCache === 'function') {
+          refreshInteractableCache();
+        }
+      }
+      else if (nearest.userData.interactionType === 'log'){
+        // show associated log image overlay
+        const logName = nearest.name || nearest.userData.logId || 'unknown_log';
+        if (typeof window.showLogImage === 'function') {
+          window.showLogImage(logName);
+        } else {
+          console.warn('[Log] No log viewer available for', logName);
+        }
+        // notify gameController if needed
+        if (gameController && typeof gameController.onLogViewed === 'function') {
+          try { gameController.onLogViewed(logName); } catch {}
+        }
+      } 
+      else {
         // Regular interaction
         gameController.handleInteraction(nearest);
       }
+    } else {
+      console.log('[Interact] E pressed but no interactable within range (best=', best.toFixed(2), ')');
     }
   });
 }
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(0, 1.7, -5);
-  camera.lookAt(0, 1.7, 0);
+  camera.position.set(5.76, 1.7, -1.07);
+  camera.lookAt(-5.25, 1.7, -1.07);
   console.log('[reset] Player position reset');
 }
 
@@ -746,9 +1211,17 @@ function initializeDoorManager() {
   const doorConfigs = [
     { name: 'testingRoom1_Door', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
     { name: 'officeDoor1', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
-    { name: 'officeDoor2', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 },
-    { name: 'J_2b17002', openAxis: 'y', openAngleDeg: 90, triggerRadius: 3, speed: 1.5 }
+    // officeDoor2 and J_2b17002 are intentionally omitted so they won't auto-open by proximity.
+    // They are handled via per-mesh HingedDoor onInteract (require explicit E press).
   ];
+
+  // Merge per-level registered door configs (if any)
+  if (Array.isArray(window.levelDoorConfigs) && window.levelDoorConfigs.length) {
+    for (const c of window.levelDoorConfigs) {
+      if (!doorConfigs.find(x => x.name === c.name)) doorConfigs.push(c);
+    }
+    console.log('[DoorManager] Merged per-level door configs:', window.levelDoorConfigs.map(d => d.name));
+  }
 
   doorManager = new DoorManager(
     scene,
@@ -776,7 +1249,7 @@ function initializeDoorManager() {
     console.log(`[DoorManager] Found ${doorManager.doors.length} doors:`, doorManager.doors.map(d => d.node.name));
     doorManager.doors.forEach(door => {
       // Initially lock doors that require keys/progression
-      if (door.node.name === 'officeDoor1' || door.node.name === 'testingRoom1_Door' || door.node.name === 'officeDoor2') {
+      if (door.node.name === 'officeDoor1' || door.node.name === 'testingRoom1_Door') {
         door.locked = true;
         console.log(`[DoorManager] Initially locked ${door.node.name}`);
       } else {
@@ -788,6 +1261,14 @@ function initializeDoorManager() {
     console.warn('[DoorManager] No doors found during initialization');
   }
 }
+
+// Dev helper: force open all hinged doors (useful when debugging)
+window.openAllHingedDoors = function() {
+  if (!Array.isArray(window.levelHingedDoors)) return;
+  for (const hd of window.levelHingedDoors) {
+    try { hd.open(); console.log('[Dev] Opening hinged door', hd.mesh.name); } catch (e) { console.warn('openAllHingedDoors failed', e); }
+  }
+};
 
 function handleDoorInteraction(doorObject = null) {
   // Fallback: try to initialize DoorManager if it's not ready yet
@@ -880,15 +1361,40 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
-// -------- NEW: robust requiredKey lookup up the parent chain --------
-function getRequiredKeyFrom(obj) {
-  let p = obj;
-  while (p) {
-    const k = p.userData && p.userData.requiredKey;
-    if (k === "T" || k === "E") return k;
-    p = p.parent;
+// Shared helper: distance from camera to mesh or its bounds (exit doors have pivot offsets)
+const _interactTmpVec = new THREE.Vector3();
+const _interactTmpBox = new THREE.Box3();
+const _interactTmpPoint = new THREE.Vector3();
+function computeInteractDistance(obj) {
+  if (!obj) return Infinity;
+
+  let dist = Infinity;
+  try {
+    obj.getWorldPosition(_interactTmpVec);
+    dist = camera.position.distanceTo(_interactTmpVec);
+  } catch {
+    // ignore missing world position
   }
-  return "E";
+
+  try {
+    _interactTmpBox.setFromObject(obj);
+    if (
+      Number.isFinite(_interactTmpBox.min.x) &&
+      Number.isFinite(_interactTmpBox.min.y) &&
+      Number.isFinite(_interactTmpBox.min.z) &&
+      Number.isFinite(_interactTmpBox.max.x) &&
+      Number.isFinite(_interactTmpBox.max.y) &&
+      Number.isFinite(_interactTmpBox.max.z)
+    ) {
+      _interactTmpBox.clampPoint(camera.position, _interactTmpPoint);
+      const boxDist = camera.position.distanceTo(_interactTmpPoint);
+      dist = Math.min(dist, boxDist);
+    }
+  } catch {
+    // Some helper objects (AxesHelper, etc.) can throw; ignore
+  }
+
+  return dist;
 }
 
 // Cache interactable objects to avoid scene traversal every frame
@@ -906,7 +1412,8 @@ function updateInteractableCache() {
   });
   // Update global reference
   window.cachedInteractables = cachedInteractables;
-  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`);
+  const names = cachedInteractables.map(o => `${o.name || '(unnamed)'}:${o.userData?.interactionType || 'unknown'}`);
+  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`, names);
 }
 
 // Add function to refresh cache when objects become non-interactable
@@ -975,7 +1482,7 @@ function checkForInteractables() {
   for (const obj of cachedInteractables) {
     if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
     
-    const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+    const d = computeInteractDistance(obj);
 
     // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
@@ -1008,7 +1515,9 @@ function checkForInteractables() {
     const isSafeBox = target.name === "Cube014_1" && target.userData.interactionType === "safebox";
     const isElevator = target.name === "Mesh_0001" && target.userData.interactionType === "elevator";
     const isDoor = target.userData.interactionType === "door";
+    const isExit = target.userData.interactionType === "exit";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
+    const isLog = target.name.includes("Log") && target.userData.interactionType === "log";
     
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
@@ -1025,13 +1534,24 @@ function checkForInteractables() {
     } else if (isSafeBox) {
       p.y += 0.5; // Higher position for safe box
       interactionIndicator.textContent = "Press E to unlock SafeBox";
+    } else if (isExit) {
+      p.y += 0.5;
+      if (typeof target.userData?.getInteractLabel === "function") {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        interactionIndicator.textContent = "Press E to Exit";
+      }
     } else if (isDoor) {
       p.y += 0.5; // Higher position for doors
-      // Check door lock state and show appropriate prompt
-      const doorData = doorManager?.doors.find(d => d.node.name === target.name);
-      const isLocked = doorData?.locked ?? false;
-      const action = isLocked ? 'unlock' : 'lock';
-      interactionIndicator.textContent = `Press E to ${action} door`;
+      // If the object provides a custom interact label (e.g. HingedDoor), use it
+      if (typeof target.userData?.getInteractLabel === 'function') {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        // Check door lock state and show appropriate prompt
+        const doorData = doorManager?.doors.find(d => d.node.name === target.name);
+        const isLocked = doorData?.locked ?? false;
+        interactionIndicator.textContent = isLocked ? 'Press E to unlock door' : 'Press E to open door';
+      }
     } else if (isKeycardReader) {
       p.y += 0.5; // Higher position for keycard reader
       if (gameController && gameController.hud && gameController.hud.hasKeycard) {
@@ -1048,23 +1568,17 @@ function checkForInteractables() {
       } else {
         interactionIndicator.textContent = "Flashlight required";
       }
-    } else {
+    } 
+    else if (isLog){
+      p.y += 0.5; // Higher position for logs
+      interactionIndicator.textContent = "Press E to read log";
+    }else {
       p.y += 0.5; // Higher position for other objects
-
-      // Identify doors and show exact key they need
-      const isDoor =
-        (target.userData && target.userData.isDoor) ||
-        (target.name && target.name.toLowerCase().includes("door"));
-
-        /*
-      const requiredKey = getRequiredKeyFrom(target);
-      interactionIndicator.textContent = isDoor
-        ? `Press ${requiredKey} to open the door`
-        : `Press ${requiredKey} to interact`;*/
-
-        interactionIndicator.textContent = isDoor
-        ? `Press E to open the door`
-        : `Press E to interact`;
+      if (typeof target.userData?.getInteractLabel === 'function') {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        interactionIndicator.textContent = "Press E to interact";
+      }
     }
     
     const s = worldToScreen(p);
@@ -1127,6 +1641,12 @@ function animate() {
   if (doorManager) {
     doorManager.update(dt);                     // update door animations
   }
+  // Update any lightweight hinged doors created by level loaders
+  if (Array.isArray(window.levelHingedDoors) && window.levelHingedDoors.length) {
+    for (const hd of window.levelHingedDoors) {
+      try { hd.update(dt); } catch (e) { console.warn('HingedDoor update failed', e); }
+    }
+  }
   if (gameController && !gameController.isPaused()) {
     gameController.update();                    // HUD / flashlight / gameplay ticks
     
@@ -1142,7 +1662,21 @@ function animate() {
     }
   }
 
+  if (coordHudVisible && coordHud) {
+    updateCoordinateHud();
+  }
+
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
+
+window.addEventListener("credits:restart", () => {
+  window.location.reload();
+});
+
+const startScreen = new StartScreen();
+startScreen.waitForStart().then(() => {
+  beginGameFlow();
+});
+
 requestAnimationFrame(animate);

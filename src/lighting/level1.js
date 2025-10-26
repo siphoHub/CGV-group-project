@@ -17,14 +17,13 @@ dirLight.shadow.camera.near = 0.5;
 dirLight.shadow.camera.far = 50;
 scene.add(dirLight);
 
-//flashlight
-
 const flashlight=new THREE.SpotLight(
     0xffffff,   //colour
-    100,          //intensity (increased from 10 to 100)
-    250,         //distance (increased from 100 to 250)
-    Math.PI/6,  //angle
-    0.5         //edges
+    200,
+    400,
+    Math.PI/5,
+    0.3,
+    1
     );
 flashlight.visible=false;
 flashlight.position.set(0, 0, 0); // adjust to your desired position
@@ -35,6 +34,28 @@ const flashLightTarget=new THREE.Object3D();
 flashLightTarget.userData.isPersistent = true; // Mark target as persistent too
 scene.add(flashLightTarget);
 flashlight.target=flashLightTarget;
+
+const coneGeometry = new THREE.ConeGeometry(0.4, 2, 32, 1, true);
+const coneMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffaa,
+    transparent: true,
+    opacity: 0.00,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: false
+});
+
+const lightCone = new THREE.Mesh(coneGeometry, coneMaterial);
+lightCone.rotation.x = -Math.PI / 2;
+lightCone.castShadow = false;
+lightCone.receiveShadow = false;
+flashlight.add(lightCone);
+
+function updateFlashlightBeam() {
+  const length = flashlight.distance / 15;
+  const radius = Math.tan(flashlight.angle) * length/2;
+  lightCone.scale.set(radius, length, radius);
+}
 
 //red emergency lights
 const redLights = [];
@@ -65,9 +86,6 @@ positions.forEach((pos, index) => {
   redLights.push(light);
 });
 
-
-
-
-return  { flashlight, redLights, hemi, dirLight }
+return  { flashlight, redLights, hemi, dirLight, updateFlashlightBeam }
 
 }
