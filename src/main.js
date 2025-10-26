@@ -107,12 +107,23 @@ window.addEventListener("level:loaded", (e) => {
 
 // Listen for keycard usage event from level2 and transition to level3 with a custom message
 window.addEventListener('keycard:used', async (e) => {
+  if (_cutscene23Playing || isLevelTransitioning()) return; // guard
+  _cutscene23Playing = true;
+
   const detail = e.detail || {};
   const target = detail.targetLevel || 'level3';
   const message = detail.loadingMessage || 'Loading...';
   console.log('[main] Keycard used, transitioning to', target, 'with message:', message);
 
-  // Use the level loader to show the custom message and load target
+  try { controls.unlock(); } catch {}
+
+  const l23 = new cutscene23('/models/assets/cutscene23.png');
+
+  l23.play( 
+    async () => {
+      //cutscene finished. now show loading screen and transition
+
+      // Use the level loader to show the custom message and load target
   // We rely on loadLevel to accept side-effects; show loading screen first
   const loadingEl = document.getElementById('loading-screen');
   if (loadingEl) {
@@ -138,7 +149,16 @@ window.addEventListener('keycard:used', async (e) => {
     }
   } catch (err) {
     console.error('[main] Error during keycard transition:', err);
-  }
+  }finally {
+      _cutscene23Playing = false;
+    }
+
+
+    }
+  );
+
+
+  
 });
 
 // ====== ONE-KEY “STAMP A DOOR HERE” ======
@@ -303,6 +323,7 @@ let cutscene = null;
 let levelLoaded = false;
 let readyToInit = false;
 let hasGameStarted = false;
+let _cutscene23Playing = false;
 
 // Schedule cutscene to to play and then 15seconds in, level must start loading
 let cutsceneLoadTimer = null;
