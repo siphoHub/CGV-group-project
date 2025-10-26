@@ -146,7 +146,6 @@ export class GameController {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
-      default:
 
       //batteries
 
@@ -368,6 +367,129 @@ stopRoomFlashing() {
     if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
   }
 }
+  
+  // Pause/resume helpers for audio and countdown
+  _pauseAllGameAudio() {
+    this._pausedAudio = this._pausedAudio || {};
+    const audios = ['itemPickupSound','flashlightSwitchSound','generatorSound','scaryScreamSound','deniedSound','selfDestructSound','surgeonAttackSound'];
+    for (const k of audios) {
+      const a = this[k];
+      if (a && !a.paused) {
+        try { this._pausedAudio[k] = a.currentTime || 0; a.pause(); } catch (err) { void err; }
+      }
+    }
+    // Also pause any escape tick sound
+    if (this._escapeTickSound && !this._escapeTickSound.paused) {
+      try { this._pausedAudio['_escapeTickSound'] = this._escapeTickSound.currentTime || 0; this._escapeTickSound.pause(); } catch (err) { void err; }
+    }
+  }
+
+  _resumeAllGameAudio() {
+    if (!this._pausedAudio) return;
+    for (const k of Object.keys(this._pausedAudio)) {
+      try {
+        if (k === '_escapeTickSound' && this._escapeTickSound) {
+          this._escapeTickSound.currentTime = this._pausedAudio[k] || 0;
+          this._escapeTickSound.play().catch(() => {});
+        } else if (this[k]) {
+          this[k].currentTime = this._pausedAudio[k] || 0;
+          this[k].play().catch(() => {});
+        }
+      } catch (err) { void err; }
+    }
+    this._pausedAudio = {};
+  }
+
+  _pauseEscapeCountdown() {
+    if (this._escapeCountdownTimer) {
+      clearInterval(this._escapeCountdownTimer);
+      this._escapeCountdownTimer = null;
+      this._escapePaused = true;
+    }
+  }
+
+  _scheduleEscapeInterval() {
+    // ensure any existing timer cleared
+    if (this._escapeCountdownTimer) clearInterval(this._escapeCountdownTimer);
+    this._escapeCountdownTimer = setInterval(() => {
+      this._escapeRemaining -= 1;
+      const inner = document.getElementById('escape-countdown-inner');
+      if (inner) {
+        inner.textContent = String(this._escapeRemaining);
+        inner.style.transform = 'scale(1.06)';
+        setTimeout(() => { if (inner) inner.style.transform = ''; }, 250);
+      }
+      try { if (this._escapeTickSound) { this._escapeTickSound.currentTime = 0; this._escapeTickSound.play().catch(() => {}); } } catch (err) { void err; }
+
+      if (this._escapeRemaining <= 0) {
+        // finalize countdown
+        this.stopEscapeCountdown();
+        const ov2 = document.getElementById('escape-countdown-overlay'); if (ov2) ov2.style.display = 'none';
+        try {
+          const ex = new Audio('../public/models/assets/explosion.mp3');
+          ex.volume = 1.0;
+          ex.play().catch(() => {});
+  } catch (err) { void err; }
+
+        try {
+          const flash = document.createElement('div');
+          flash.id = 'explosion-flash';
+          flash.style.cssText = [
+            'position:fixed',
+            'inset:0',
+            'pointer-events:none',
+            'z-index:100001',
+            "background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.98) 0%, rgba(255,245,200,0.95) 14%, rgba(255,180,90,0.85) 34%, rgba(0,0,0,0) 60%)",
+            'opacity:0',
+            'transition: opacity 220ms ease-out, transform 600ms ease-out'
+          ].join(';');
+          document.body.appendChild(flash);
+          requestAnimationFrame(() => { flash.style.opacity = '1'; flash.style.transform = 'scale(1.02)'; });
+          setTimeout(() => { flash.style.opacity = '0'; flash.style.transform = 'scale(1.08)'; setTimeout(() => { try { flash.remove(); } catch (err) { void err; } }, 600); }, 140);
+        } catch (err) { void err; }
+
+        try { this.handleGameOver(this._escapeFinalMessage); } catch (err) { console.warn('[GameController] handleGameOver failed', err); }
+      }
+    }, 1000);
+  }
+
+  _resumeEscapeCountdown() {
+    if (!this._escapePaused) return;
+    this._escapePaused = false;
+    if (this._escapeRemaining > 0) {
+      this._scheduleEscapeInterval();
+    }
+  }
+
+  // Stop and reset all game audio that might be playing for the dramatic sequence
+  stopAllGameAudio() {
+    const audios = ['surgeonAttackSound','selfDestructSound','deniedSound','generatorSound','itemPickupSound','flashlightSwitchSound','scaryScreamSound'];
+    for (const k of audios) {
+      try {
+        const a = this[k];
+        if (a) {
+          try { a.pause(); } catch (err) { void err; }
+          try { a.currentTime = 0; } catch (err) { void err; }
+        }
+      } catch (err) { void err; }
+    }
+    // stop tick sound if present
+    try { if (this._escapeTickSound) { this._escapeTickSound.pause(); this._escapeTickSound.currentTime = 0; } } catch (err) { void err; }
+    // clear any stored paused-audio markers
+    try { this._pausedAudio = {}; } catch (err) { void err; }
+  }
+
+  _removeEscapeHint() {
+    try {
+      // traverse and remove any interactSprite attached to exit nodes
+      this.scene.traverse((o) => {
+        if (o && o.userData && o.userData.interactSprite) {
+          try { const s = o.userData.interactSprite; if (s.parent) s.parent.remove(s); } catch (err) { void err; }
+          try { o.userData.interactSprite = null; } catch (err) { void err; }
+        }
+      });
+    } catch (err) { void err; }
+  }
   // Getter for flashlight state
   get hasFlashlight() {
     const flashlightState = this.hud.getFlashlightState();
@@ -545,6 +667,52 @@ stopRoomFlashing() {
               try { this.surgeonAttackSound.currentTime = 0; this.surgeonAttackSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] surgeonAttackSound play failed', err); }
             }, 2000);
           } catch (err) { console.warn('[Zip] scheduling surgeonAttackSound failed', err); }
+          // Start a dramatic escape countdown (70s) — if it reaches 0, player dies with custom message
+          try { this.startEscapeCountdown(70, "You didnt escape in time"); } catch (err) { console.warn('[Zip] startEscapeCountdown failed', err); }
+
+          // Make the escape door/object interactable so player can press E to escape
+          try {
+            // loose name normalizer: lowercase and strip non-alphanumeric for robust matching
+            const normalize = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
+            const targetNorm = normalize('Object_2011');
+
+            let found = null;
+            // try direct name lookup first
+            try { found = this.scene.getObjectByName && this.scene.getObjectByName('Object_2011'); } catch (e) { void e; }
+
+            // otherwise traverse and match loosely
+            if (!found) {
+              this.scene.traverse((child) => {
+                if (found || !child || !child.name) return;
+                try {
+                  if (normalize(child.name) === targetNorm || normalize(child.name).includes(targetNorm) || targetNorm.includes(normalize(child.name))) {
+                    found = child;
+                  }
+                } catch (e) { void e; }
+              });
+            }
+
+            if (!found) {
+              console.warn('[Zip] Object_2011 not found in scene; cannot make exit interactable');
+            } else {
+              const child = found;
+              console.log('[Zip] making', child.name, 'an exit interactable');
+              // mark as an exit interactable
+              child.userData.interactable = true;
+              child.userData.requiredKey = 'E';
+              child.userData.interactionType = 'exit';
+              // refresh the global interactable cache so main loop picks this up
+              try { if (window.updateInteractableCache) window.updateInteractableCache(); else if (window.refreshInteractableCache) window.refreshInteractableCache(); } catch (e) { void e; }
+              // Ensure the global cached array contains this object immediately
+              try {
+                if (window.cachedInteractables && Array.isArray(window.cachedInteractables) && window.cachedInteractables.indexOf(child) === -1) {
+                  window.cachedInteractables.push(child);
+                }
+              } catch (e) { void e; }
+              // Provide a custom label for the interaction indicator
+              try { child.userData.getInteractLabel = function() { return 'Press E to Escape'; }; child.userData.interactLabelText = 'Press E to Escape'; } catch (e) { void e; }
+            }
+          } catch (err) { console.warn('[Zip] making Object_2011 interactable failed', err); }
           try { if (this.onZipWin) this.onZipWin(); } catch (err) { console.warn('[Zip] onZipWin handler error', err); }
           try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
           this._zipActive = false;
@@ -722,6 +890,18 @@ stopRoomFlashing() {
   // Toggle pause menu
   togglePause() {
     const isPaused = this.hud.togglePause();
+
+    // Pause or resume gameplay-adjacent effects (audio, escape countdown)
+    try {
+      if (isPaused) {
+        this._pauseAllGameAudio();
+        this._pauseEscapeCountdown();
+      } else {
+        this._resumeAllGameAudio();
+        this._resumeEscapeCountdown();
+      }
+    } catch (err) { console.warn('[GameController] pause/resume handlers failed', err); }
+
     return isPaused;
   }
 
@@ -740,6 +920,20 @@ stopRoomFlashing() {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Objectives] Initialized with first objective: Turn on the power');
+  }
+
+  initializeLevel3Objectives() {
+    // Reset any level-progress flags that are irrelevant for Level 3
+    this.powerTurnedOn = false;
+    this.flashlightPickedUp = false;
+    this.generatorActivated = false;
+
+    // Set the objectives UI to the single Level 3 objective
+    if (this.hud) {
+      this.hud.objectives = [ { id: 1, text: 'Find the Arcade machine', completed: false } ];
+      try { this.hud.updateObjectivesDisplay(); } catch (err) { console.warn('[GameController] updateObjectivesDisplay failed', err); }
+    }
+    console.log('[Objectives] Level 3 objectives initialized: Find the Arcade machine');
   }
 
   // Initialize level 2 specific objectives
@@ -857,8 +1051,13 @@ stopRoomFlashing() {
   onLevel3ExitReached() {
     // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
     this.completeObjective(1);
+    // Stop any active countdowns and game music before showing credits
+  try { this.stopEscapeCountdown(); } catch (err) { void err; }
+  try { this.stopAllGameAudio(); } catch (err) { void err; }
+  // remove any interact sprite hint left behind
+  try { this._removeEscapeHint(); } catch (err) { void err; }
     this.showEndCredits();
-    console.log('[Level3] Exit reached – rolling credits');
+    console.log('[Level3] Exit reached – rolling credits (countdown/music stopped)');
   }
 
   showEndCredits() {
@@ -872,19 +1071,65 @@ stopRoomFlashing() {
   }
 
   //game over
-  handleGameOver()
-  {
-    console.log('[GameController] Game Over triggered - battery depleted');
-    this.flashlight.visible = false;
+  handleGameOver(message) {
+    console.log('[GameController] Game Over triggered', message ? `- ${message}` : '');
+    if (this.flashlight) this.flashlight.visible = false;
 
-    if (this.controls)
-    {
-      this.controls.unlock();
+    if (this.controls) {
+      try { this.controls.unlock(); } catch (err) { void err; }
     }
 
-    this.hud.showGameOverScreen();
-  setTimeout(() => {
-    this.playScaryScream();
-  }, 300);
+    // show provided message or default
+    try { this.hud.showGameOverScreen(message); } catch (err) { console.warn('[GameController] hud.showGameOverScreen failed', err); }
+  setTimeout(() => { try { this.playScaryScream(); } catch (err) { void err; } }, 300);
+  }
+
+  // Escape countdown (used after successful Zip mini-game)
+  startEscapeCountdown(seconds = 70, finalMessage = "You didnt escape in time") {
+    this.stopEscapeCountdown();
+    // Update objectives UI to reflect escape urgency
+    try {
+      if (this.hud) {
+        this.hud.objectives = [{ id: 1, text: 'Escape in time', completed: false }];
+        this.hud.updateObjectivesDisplay();
+      }
+    } catch (err) { console.warn('[GameController] update objectives for countdown failed', err); }
+
+    this._escapeRemaining = Math.max(0, Math.floor(seconds));
+    this._escapeFinalMessage = finalMessage;
+
+    // create overlay
+    let ov = document.getElementById('escape-countdown-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'escape-countdown-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;z-index:100000;background:rgba(0,0,0,0.6);pointer-events:none;';
+      ov.innerHTML = `<div id="escape-countdown-inner" style="pointer-events:none;color:#ffdddd;text-align:center;font-family:VT323,monospace;font-size:clamp(48px,8vw,160px);text-shadow:0 0 30px rgba(255,50,50,0.9);">${this._escapeRemaining}</div>`;
+      document.body.appendChild(ov);
+    } else {
+      const inner = ov.querySelector('#escape-countdown-inner'); if (inner) inner.textContent = String(this._escapeRemaining);
+      ov.style.display = 'grid';
+    }
+
+    // dramatic tick sound (optional) - create once and keep on the controller so it can be paused
+    try { this._escapeTickSound = new Audio('../public/models/assets/denied-sound.mp3'); this._escapeTickSound.volume = 0.8; } catch (err) { void err; this._escapeTickSound = null; }
+
+    // If the game is currently paused, mark countdown paused and don't start ticking until resume
+    if (this.isPaused && this.hud && this.hud.getPauseState && this.hud.getPauseState()) {
+      this._escapePaused = true;
+      return;
+    }
+
+    // start the interval loop
+    this._escapePaused = false;
+    this._scheduleEscapeInterval();
+  }
+
+  stopEscapeCountdown() {
+    if (this._escapeCountdownTimer) { clearInterval(this._escapeCountdownTimer); this._escapeCountdownTimer = null; }
+    const ov = document.getElementById('escape-countdown-overlay'); if (ov) ov.style.display = 'none';
+    // stop/reset tick sound
+    try { if (this._escapeTickSound && !this._escapeTickSound.paused) { this._escapeTickSound.pause(); this._escapeTickSound.currentTime = 0; } } catch (err) { void err; }
+    this._escapePaused = false;
   }
 }
