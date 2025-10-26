@@ -255,10 +255,10 @@ export class ZipOverlay {
       </div>
     `;
 
-    const chip = document.createElement("div");
-    chip.className = "zip-hudchip";
-    // show the RUN hint only (HIGH_TO_LOW priority)
-    chip.innerHTML = `<div style="font-family: monospace;">&gt; RUN: PURGE.PROTOCOL --priority HIGH_TO_LOW</div>`;
+  const chip = document.createElement("div");
+  chip.className = "zip-hudchip";
+  // show the RUN hint and an additional hint about the red door
+  chip.innerHTML = `<div style="font-family: monospace;">&gt; RUN: PURGE.PROTOCOL --priority HIGH_TO_LOW</div><div style="margin-top:8px;color:#ffd7a8;font-weight:600;">The Red Door leads to the light</div>`;
 
     this.canvas = document.createElement("canvas");
     this.canvas.className = "zip-canvas";

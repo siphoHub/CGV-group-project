@@ -200,6 +200,18 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     await loadLevel(levelName, scene);
     currentLevel = levelName;
 
+    // Initialize level-specific objectives if the caller provided a gameController
+    if (gameController && levelName === 'level3') {
+      if (typeof gameController.initializeLevel3Objectives === 'function') {
+        try { gameController.initializeLevel3Objectives(); } catch (err) { console.warn('[LevelLoader] initializeLevel3Objectives failed', err); }
+      } else {
+        try {
+          gameController.hud.objectives = [{ id: 1, text: 'Find the Arcade machine', completed: false }];
+          gameController.hud.updateObjectivesDisplay();
+        } catch (err) { console.warn('[LevelLoader] fallback set objectives failed', err); }
+      }
+    }
+
     // Await colliders/loaded promises which were registered before loading started
     let collidersDetail = null;
     let rayTargetsDetail = null;
@@ -315,8 +327,14 @@ export async function transitionToLevel(levelName, scene, gameController, camera
         }
         
       } else {
-        camera.position.set(0, 1.7, -5);
-        camera.lookAt(0, 1.7, -10);
+        // Default spawn for non-Level-3 levels. Use level-specific fallback where helpful.
+        if (levelName === 'level1') {
+          camera.position.set(0, 1.7, -5);
+          camera.lookAt(0, 1.7, -7);
+        } else {
+          camera.position.set(0, 1.7, -4);
+          camera.lookAt(0, 1.7, -10);
+        }
       }
       console.log(`[LevelLoader] Player position reset for ${levelName}`);
     }

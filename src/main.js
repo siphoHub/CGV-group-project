@@ -62,7 +62,7 @@ let doorManager = null;
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-5);
+camera.position.set(0,1.7,-8);
 camera.lookAt(0, 1.7, 0);
 
 
@@ -1009,6 +1009,28 @@ function initializeGame(lights) {
       }
     });
     
+    // Fallback: if traversal didn't find any nearest interactable, try a raycast
+    // from the camera center to pick the object the player is actually looking at.
+    if (!nearest) {
+      try {
+        const rr = new THREE.Raycaster();
+        const mm = new THREE.Vector2(0, 0);
+        rr.setFromCamera(mm, camera);
+        const ints = rr.intersectObjects(scene.children, true);
+        if (ints && ints.length > 0) {
+          for (const it of ints) {
+            const obj = it.object;
+            if (obj && obj.userData && obj.userData.interactable) {
+              const d = it.distance;
+              const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+              const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
+              if (d <= maxAllowed) { nearest = obj; best = d; break; }
+            }
+          }
+        }
+      } catch (e) { console.warn('[Interact] raycast fallback failed', e); }
+    }
+
   if (nearest) {
       if (nearest.userData?.interactionType === 'exit') {
         const dbg = (window.level3ExitNodes || []).map(n => `${n.name}:${n.uuid}`);
@@ -1211,19 +1233,10 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  let levelName = getCurrentLevel();
-  //level 1 reset
-  if(levelName === "level1"){
-    camera.position.set(0, 1.7, -5);
-    camera.lookAt(0, 1.7, 0);
-  } 
-  
-  //level 3 reset
-  else if (levelName === "level3"){
-    camera.position.set(5.76, 1.7, -1.07);
-    camera.lookAt(-5.25, 1.7, -1.07);
-  }
-
+  // Default starting spawn for Level 1 (inside the building)
+  camera.position.set(0, 1.7, -5);
+  // Face forward into the building
+  camera.lookAt(0, 1.7, -4);
   console.log('[reset] Player position reset');
 }
 
@@ -1602,6 +1615,8 @@ function checkForInteractables() {
       p.y += 0.5;
       if (typeof target.userData?.getInteractLabel === "function") {
         interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else if (typeof target.userData?.interactLabelText === 'string') {
+        interactionIndicator.textContent = target.userData.interactLabelText;
       } else {
         interactionIndicator.textContent = "Press E to Exit";
       }
