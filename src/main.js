@@ -332,30 +332,7 @@ let levelLoadStarted = false;
 let levelLoadPromise = null;
 
 
-// Pause everything for end cutscene / credits
-let __gamePausedForCutscene = false;
-window.pauseForCutscene = function pauseForCutscene() {
-  if (__gamePausedForCutscene) return;
-  __gamePausedForCutscene = true;
 
-  window.__suppressInput = true;
-
-  try { controls.unlock(); } catch {}
-  try { controls.enabled = false; } catch {}  // <— ensure movement stops immediately
-
-  try { window.dispatchEvent(new Event('timer:stop')); } catch {}
-  try { if (window.__levelTimerInterval) clearInterval(window.__levelTimerInterval); } catch {}
-  try { gameController?.timer?.stop?.(); } catch {}
-
-  try { fadeBackgroundMusic(); } catch {}
-  try { gameController?.audio?.stopFootsteps?.(); } catch {}
-  try { gameController?.audio?.fadeAmbient?.(0, 600); } catch {}
-
-  try { document.getElementById('interaction-indicator')?.style && (document.getElementById('interaction-indicator').style.display = 'none'); } catch {}
-  try { document.getElementById('crosshair')?.style && (document.getElementById('crosshair').style.display = 'none'); } catch {}
-
-  try { gameController?.pause?.(); } catch {}
-};
 
 function startLevelLoad() {
   if (levelLoaded) return levelLoadPromise || Promise.resolve();
@@ -1029,10 +1006,7 @@ function initializeGame(lights) {
   const interactionDistance = 1.8;
 
   document.addEventListener("keydown", (event) => {
-    if (event.code !== interactKey) return;
-
-    if (window.__suppressInput || __gamePausedForCutscene) return;
-
+    if (event.code !== interactKey) return;    
 
     if (!controls.isLocked) {
       console.log('[Interact] E pressed while controls unlocked – ignoring');
@@ -1141,20 +1115,6 @@ function initializeGame(lights) {
         controls.unlock();
         console.log('[SafeBox] Opening safe box interface');
       } else if (nearest.userData.interactionType === 'exit') {
-        // console.log('[Interact][exit] triggering exit on', nearest.name);
-        // let handled = false;
-        // if (typeof nearest.userData.onInteract === 'function') {
-        //   try { nearest.userData.onInteract(nearest); handled = true; } catch (e) { console.warn('[Interact][exit] onInteract failed', e); }
-        // }
-        // if (!handled && gameController) {
-        //   gameController.handleInteraction(nearest);
-        // }
-
-
-
-         // Pause unconditionally when an exit is used (so Level 3 cutscene/credits start from a clean state)
-        try { window.pauseForCutscene?.(); } catch {}
-
         console.log('[Interact][exit] triggering exit on', nearest.name);
         let handled = false;
         if (typeof nearest.userData.onInteract === 'function') {
@@ -1163,6 +1123,7 @@ function initializeGame(lights) {
         if (!handled && gameController) {
           gameController.handleInteraction(nearest);
         }
+
 
 
       } else if (nearest.userData.interactionType === 'door') {
@@ -1767,13 +1728,6 @@ function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
   frameCount++;
 
-  // NEW: while cutscene/credits are active, skip gameplay updates
-  if (__gamePausedForCutscene) {
-    renderer.render(scene, camera);
-    requestAnimationFrame(animate);
-    return;
-  }
-  
   // Performance monitoring
   const currentTime = performance.now();
   const frameDelta = currentTime - lastFrameTime;

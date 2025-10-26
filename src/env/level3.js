@@ -444,28 +444,7 @@ export default async function loadLevel3(scene) {
       }
 
 
-       // Call this before starting the end cutscene
-  function preEndCleanup() {
-    // Block further input
-    try { window.__suppressInput = true; } catch {}
-    try { controls?.unlock?.(); } catch {}
-    try { controls && (controls.enabled = false); } catch {}
-
-    // Stop any level timer (cover common patterns + broadcast)
-    try { window.dispatchEvent(new Event('timer:stop')); } catch {}
-    try { gameController?.timer?.stop?.(); } catch {}
-    try { if (window.__levelTimerInterval) clearInterval(window.__levelTimerInterval); } catch {}
-
-    // Fade/stop audio
-    try { gameController?.audio?.stopFootsteps?.(); } catch {}
-    try { gameController?.audio?.fadeAmbient?.(0, 600); } catch {}
-    try { gameController?.audio?.muteGroup?.('sfx'); } catch {}
-
-    // Pause/minimize HUD systems
-    try { window.dispatchEvent(new Event('minimap:pause')); } catch {}
-    try { document.getElementById('interaction-indicator')?.style && (document.getElementById('interaction-indicator').style.display = 'none'); } catch {}
-    try { document.getElementById('crosshair')?.style && (document.getElementById('crosshair').style.display = 'none'); } catch {}
-  }
+      
 
       function applyExitInteraction(node) {
         console.log(`[level3] tagging exit root "${node.name}" (uuid=${node.uuid})`);
@@ -481,9 +460,7 @@ export default async function loadLevel3(scene) {
           if (!hasPlayedLevel3Ending) {
             hasPlayedLevel3Ending = true;
 
-             // Stop timers, HUD, input, audio before cutscene
-        try { preEndCleanup(); } catch {}
-        
+
             try { document.exitPointerLock && document.exitPointerLock(); } catch {}
 
             try {
