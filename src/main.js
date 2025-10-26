@@ -8,6 +8,10 @@ import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
 import { StartScreen } from "./gameplay/startScreen.js";
 
+import { cutscene12 } from "./gameplay/cutscene12.js";    
+import { cutscene23 } from "./gameplay/cutscene23.js";
+
+
 addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
     addDoorAtCrosshair();
@@ -291,6 +295,34 @@ let levelLoaded = false;
 let readyToInit = false;
 let hasGameStarted = false;
 
+//schedule cutscene to to play and then 15seconds in, level must start loading
+let cutsceneLoadTimer = null;
+let levelLoadStarted = false;
+
+function startLevelLoad() {
+  if (levelLoadStarted) return;
+  levelLoadStarted = true;
+  console.log('[Main] Starting level load (triggered by cutscene timing)');
+  try {
+    loadLevelInBackground();
+  } catch (err) {
+    console.warn('[Main] loadLevelInBackground failed to start:', err);
+  }
+}
+
+// Start cutscene with parallel level loading
+cutscene.play(
+  // Callback when cutscene completes
+  () => {
+    // Stop cutscene music the moment cutscene finishes/skips
+    if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
+    cutsceneLoadTimer = null;
+  }
+
+  if (!levelLoadStarted) {
+    startLevelLoad();}
+
 function beginGameFlow() {
   if (hasGameStarted) {
     return;
@@ -318,6 +350,15 @@ function beginGameFlow() {
     }
   );
 }
+
+cutsceneLoadTimer = setTimeout(() => {
+  cutsceneLoadTimer = null;
+  if (!levelLoadStarted) {
+    console.log('[Main] 15s elapsed during cutscene — starting level load now');
+    startLevelLoad();
+  }
+}, 15000);
+
 
 let gameController;
 let lights;
@@ -566,6 +607,163 @@ function initializeGame(lights) {
   `;
 
   document.body.appendChild(safeboxInterface);
+
+      // --- Log viewer UI---
+  (function createLogViewer() {
+    const logViewer = document.createElement('div');
+    logViewer.id = 'log-viewer';
+    logViewer.style.cssText = `
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.92); z-index: 3000; padding: 30px; box-sizing: border-box;
+    `;
+    logViewer.innerHTML = `
+      <div id="log-viewer-inner" style="max-width:1100px; width:100%; max-height:90%; overflow:hidden; background:#0b0b0b; border-radius:10px; padding:10px; box-shadow:0 10px 40px rgba(0,0,0,.8); display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:flex-end;">
+          <button id="log-close-btn" style="background:#c0392b; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;">Close</button>
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:12px; padding:10px;">
+          <button id="log-prev" aria-label="previous" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">◀</button>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; max-width:920px;">
+            <img id="log-image" src="" alt="" style="width:100%; height:auto; display:block; border-radius:6px; background:#000; max-height:78vh; object-fit:contain;" />
+            <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+              <p id="log-caption" style="color:#ddd; margin:0; font-family:monospace; font-size:14px;"></p>
+              <p id="log-pager" style="color:#bbb; margin:0; font-family:monospace; font-size:13px;"></p>
+            </div>
+          </div>
+          <button id="log-next" aria-label="next" style="background:transparent; border:none; color:#fff; font-size:32px; cursor:pointer; width:64px;">▶</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(logViewer);
+
+    // map object names (or ids) to arrays of image paths + caption
+    const LOG_IMAGE_MAP = {
+      'testingRoom1_Log1': {
+        images: ['/models/assets/logs/testingRoom1_Log1.png'
+        ],
+        caption: 'Log — Testing Room 1'
+      },
+      'testingRoom1_Log2': {
+        images: ['/models/assets/logs/testingRoom1_Log2.png'],
+        caption: 'Log — Testing Room 1 (2)'
+      },
+      'testingRoom2_Log1': {
+        images: ['/models/assets/logs/testingRoom2_Log1.png',
+          '/models/assets/logs/testingRoom2_Log2.png'
+        ],
+        caption: 'Log — Testing Room 2'
+      },
+      'testingRoom2_Log2': {
+        images: ['/models/assets/logs/testingRoom2_Log3.png'],
+        caption: 'Log — Testing Room 2 (2)'
+      },
+      
+      'office1_Log1': {
+        images: [
+          '/models/assets/logs/office1_Log1.png',
+          '/models/assets/logs/office1_Log2.png'
+        ],
+        caption: 'Notes'
+      },
+      'office2_Log2': {
+        images: ['/models/assets/logs/office2_Log1.png',
+          '/models/assets/logs/office2_Log2.png',
+          '/models/assets/logs/office2_Log3.png'
+        ],
+        caption: 'Office 2 Log'
+      }
+      // add more mappings as needed
+    };
+
+    // Preload images
+    Object.values(LOG_IMAGE_MAP).forEach(entry => {
+      entry.images.forEach(src => { const img = new Image(); img.src = src; });
+    });
+
+    const viewerEl = document.getElementById('log-viewer');
+    const imgEl = document.getElementById('log-image');
+    const captionEl = document.getElementById('log-caption');
+    const pagerEl = document.getElementById('log-pager');
+    const closeBtn = document.getElementById('log-close-btn');
+    const prevBtn = document.getElementById('log-prev');
+    const nextBtn = document.getElementById('log-next');
+
+    let currentLogKey = null;
+    let currentIndex = 0;
+    let currentImages = [];
+
+    function updatePager() {
+      pagerEl.textContent = currentImages.length > 1 ? `${currentIndex + 1} / ${currentImages.length}` : '';
+      prevBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
+      nextBtn.style.visibility = currentImages.length > 1 ? 'visible' : 'hidden';
+    }
+
+    function showIndex(i) {
+      if (!currentImages || currentImages.length === 0) return;
+      currentIndex = (i + currentImages.length) % currentImages.length;
+      imgEl.src = currentImages[currentIndex];
+      imgEl.alt = `${currentLogKey} (${currentIndex + 1})`;
+      updatePager();
+    }
+
+    function openLogViewer(key) {
+      const entry = LOG_IMAGE_MAP[key] || null;
+      if (entry) {
+        currentLogKey = key;
+        currentImages = entry.images.slice();
+        captionEl.textContent = entry.caption || key;
+      } else {
+        // fallback
+        currentLogKey = key;
+        currentImages = ['/models/assets/logs/log_placeholder.png'];
+        captionEl.textContent = `Log: ${key}`;
+      }
+      showIndex(0);
+      viewerEl.style.display = 'flex';
+      // allow keyboard navigation
+      document.addEventListener('keydown', keyNavHandler);
+      // Unlock controls so UI can receive clicks/keys
+      try { controls.unlock(); } catch {}
+    }
+
+    function closeLogViewer() {
+      viewerEl.style.display = 'none';
+      imgEl.src = '';
+      currentLogKey = null;
+      currentImages = [];
+      currentIndex = 0;
+      document.removeEventListener('keydown', keyNavHandler);
+      // Re-lock pointer
+      try { controls.lock(); } catch {}
+    }
+
+    function prev() { showIndex(currentIndex - 1); }
+    function next() { showIndex(currentIndex + 1); }
+
+    function keyNavHandler(e) {
+      if (viewerEl.style.display !== 'flex') return;
+      if (e.code === 'ArrowLeft') { e.preventDefault(); prev(); }
+      if (e.code === 'ArrowRight') { e.preventDefault(); next(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeLogViewer(); }
+    }
+
+    closeBtn.addEventListener('click', closeLogViewer);
+    prevBtn.addEventListener('click', prev);
+    nextBtn.addEventListener('click', next);
+
+    // click outside inner -> close
+    viewerEl.addEventListener('click', (e) => {
+      if (e.target === viewerEl) closeLogViewer();
+    });
+
+    // expose helper globally so interaction code can call it
+    window.showLogImage = function(name) {
+      openLogViewer(name);
+    };
+  })();
+
+
+
 
   // Note interface functions
   window.closeNote = function() {
@@ -867,16 +1065,45 @@ function initializeGame(lights) {
         } else {
           console.log('[KeycardReader] No keycard in inventory');
         }
-      } else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
+      } 
+      else if (nearest.name === 'Mesh_0001' && nearest.userData.interactionType === 'elevator') {
         // Check if flashlight has been obtained
         if (gameController && gameController.hasFlashlight) {
-          // Take elevator to level 2
-          console.log('[Elevator] Taking elevator to Level 2...');
-          progressToLevel2(scene, gameController, camera).then(success => {
-            if (success) {
-              console.log("[Elevator] Successfully progressed to Level 2");
+
+          //prevent double trigger
+          if (window._elevatorCutscenePlaying) return;
+          window._elevatorCutscenePlaying = true;
+
+          controls.unlock();
+
+          //play elevator cutscene and load level 2 in background
+          const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          elevatorCutscene.play(
+            () => {
+              console.log('[Elevator] Cutscene finished — progressing to Level 2...');
+
+
+              console.log('[Elevator] Taking elevator to Level 2...');
+                progressToLevel2(scene, gameController, camera).then(success => {
+                window._elevatorCutscenePlaying = false;
+
+                if (success) {
+                  console.log("[Elevator] Successfully progressed to Level 2");
+                };
+              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+            },
+            () => {
+              if (typeof loadLevelInBackground === 'function') {
+                loadLevelInBackground();
+              }
             }
-          });
+
+          );
+
+          // Take elevator to level 2
+         
+          
+          
         } else {
           console.log('[Elevator] Flashlight required to use elevator');
         }
@@ -928,7 +1155,21 @@ function initializeGame(lights) {
         if (typeof refreshInteractableCache === 'function') {
           refreshInteractableCache();
         }
-      }else {
+      }
+      else if (nearest.userData.interactionType === 'log'){
+        // show associated log image overlay
+        const logName = nearest.name || nearest.userData.logId || 'unknown_log';
+        if (typeof window.showLogImage === 'function') {
+          window.showLogImage(logName);
+        } else {
+          console.warn('[Log] No log viewer available for', logName);
+        }
+        // notify gameController if needed
+        if (gameController && typeof gameController.onLogViewed === 'function') {
+          try { gameController.onLogViewed(logName); } catch {}
+        }
+      } 
+      else {
         // Regular interaction
         gameController.handleInteraction(nearest);
       }
@@ -1258,6 +1499,7 @@ function checkForInteractables() {
     const isDoor = target.userData.interactionType === "door";
     const isExit = target.userData.interactionType === "exit";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
+    const isLog = target.name.includes("Log") && target.userData.interactionType === "log";
     
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
@@ -1308,7 +1550,11 @@ function checkForInteractables() {
       } else {
         interactionIndicator.textContent = "Flashlight required";
       }
-    } else {
+    } 
+    else if (isLog){
+      p.y += 0.5; // Higher position for logs
+      interactionIndicator.textContent = "Press E to read log";
+    }else {
       p.y += 0.5; // Higher position for other objects
       if (typeof target.userData?.getInteractLabel === 'function') {
         interactionIndicator.textContent = target.userData.getInteractLabel();
