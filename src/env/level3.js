@@ -281,13 +281,70 @@ export default async function loadLevel3(scene) {
         }
         open(){ this.target = this.openAngle; }
         close(){ this.target = 0; }
-        toggle(){ this.target = (Math.abs(this.target) > 1e-3) ? 0 : this.openAngle; }
+        toggle(){
+          // determine whether this action will open the door (target currently closed)
+          const willOpen = Math.abs(this.target) < 1e-3;
+          this.target = willOpen ? this.openAngle : 0;
+          // special-case: when J_2b17 opens, trigger cube movement + rat squeaks
+          try {
+            if (willOpen && this.mesh && this.mesh.name === 'J_2b17') {
+              try { triggerJ2b17Effects(); } catch (err) { console.warn('[HingedDoor] triggerJ2b17Effects failed', err); }
+            }
+          } catch (err) { void err; }
+        }
         update(dt){
           const next = THREE.MathUtils.damp(this.current, this.target, this.speed, dt);
           const delta = next - this.current;
           this.current = next;
           this.pivot.rotateOnAxis(new THREE.Vector3(0,1,0), delta);
         }
+      }
+
+      // Helper: animate a local translation on an object over duration (ms)
+      function animateTranslateX(object, deltaX, duration = 3000) {
+        if (!object) return null;
+        const startTime = performance.now();
+        const fromX = object.position.x;
+        const toX = fromX + deltaX;
+        let raf = null;
+        const step = (ts) => {
+          const t = Math.min(1, (ts - startTime) / duration);
+          object.position.x = fromX + (toX - fromX) * t;
+          if (t < 1) raf = requestAnimationFrame(step);
+        };
+        raf = requestAnimationFrame(step);
+        return () => { if (raf) cancelAnimationFrame(raf); };
+      }
+
+      // Trigger special effects when J_2b17 is opened: move two cubes and play rat squeaks
+      function triggerJ2b17Effects() {
+        try {
+          const names = ['Cube017', 'Cube017_1'];
+          for (const n of names) {
+            let node = lab.getObjectByName(n) || null;
+            if (!node) {
+              // loose fallback
+              lab.traverse(o => { if (!node && o.name && o.name.toLowerCase() === n.toLowerCase()) node = o; });
+            }
+            if (node) {
+              // move -20m in X over 3s
+              try { animateTranslateX(node, -20, 3000); } catch (err) { console.warn('[level3] animateTranslateX failed for', n, err); }
+            } else {
+              console.warn('[level3] could not find', n, 'to move');
+            }
+          }
+
+          // Play rat squeaks audio (non-positional)
+          try {
+            const rat = new Audio('/models/assets/rat squeaks.mp3');
+            rat.volume = 0.85;
+            rat.play().catch(() => {
+              // resume on next user gesture if autoplay blocked
+              const resume = () => { rat.play().catch(() => {}); document.removeEventListener('click', resume); };
+              document.addEventListener('click', resume);
+            });
+          } catch (err) { console.warn('[level3] failed to play rat squeaks', err); }
+        } catch (err) { console.warn('[level3] triggerJ2b17Effects failed', err); }
       }
 
       // --- EXIT DOOR WIRING -------------------------------------------------------
