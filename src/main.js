@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel, getCurrentLevel } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";

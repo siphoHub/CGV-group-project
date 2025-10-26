@@ -85,15 +85,18 @@ export class HUD {
             <div id="controls-section">
               <h3>CONTROLS</h3>
               <div class="control-list">
-                <div class="control-item"><span class="key">W A S D</span> - Move</div>
-                <div class="control-item"><span class="key">Mouse</span> - Look around</div>
-                <div class="control-item"><span class="key">E</span> - Interact</div>
-                <div class="control-item"><span class="key">F</span> - Toggle flashlight</div>
-                <div class="control-item"><span class="key">C</span> - Crouch</div>
-                <div class="control-item"><span class="key">M</span> - Toggle music</div>
-                <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
-              </div>
+              <div class="control-item"><span class="key">W A S D</span> - Move</div>
+              <div class="control-item"><span class="key">Shift</span> - Hold to sprint</div>
+              <div class="control-item"><span class="key">Mouse</span> - Look around</div>
+              <div class="control-item"><span class="key">E</span> - Interact</div>
+              <div class="control-item"><span class="key">F</span> - Toggle flashlight</div>
+              <div class="control-item"><span class="key">C</span> - Crouch</div>
+              <div class="control-item"><span class="key">M</span> - Toggle music</div>
+              <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
+              <div class="control-item"><span class="key">V</span> - Toggle coordinate HUD</div>
+              <div class="control-item"><span class="key">R</span> - Reset position</div>
             </div>
+          </div>
 
             <div id="pause-objectives-section">
               <h3>OBJECTIVES</h3>
