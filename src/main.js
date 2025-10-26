@@ -295,33 +295,40 @@ let levelLoaded = false;
 let readyToInit = false;
 let hasGameStarted = false;
 
-//schedule cutscene to to play and then 15seconds in, level must start loading
+// Schedule cutscene to to play and then 15seconds in, level must start loading
 let cutsceneLoadTimer = null;
 let levelLoadStarted = false;
+let levelLoadPromise = null;
 
 function startLevelLoad() {
-  if (levelLoadStarted) return;
-  levelLoadStarted = true;
-  console.log('[Main] Starting level load (triggered by cutscene timing)');
-  try {
-    loadLevelInBackground();
-  } catch (err) {
-    console.warn('[Main] loadLevelInBackground failed to start:', err);
-  }
-}
+  if (levelLoaded) return levelLoadPromise || Promise.resolve();
+  if (levelLoadPromise) return levelLoadPromise;
 
-// Start cutscene with parallel level loading
-cutscene.play(
-  // Callback when cutscene completes
-  () => {
-    // Stop cutscene music the moment cutscene finishes/skips
-    if (cutsceneLoadTimer) {
+  levelLoadStarted = true;
+  if (cutsceneLoadTimer) {
     clearTimeout(cutsceneLoadTimer);
     cutsceneLoadTimer = null;
   }
-
-  if (!levelLoadStarted) {
-    startLevelLoad();}
+  console.log('[Main] Starting level load (triggered by cutscene timing)');
+  try {
+    levelLoadPromise = loadLevelInBackground().catch((err) => {
+      // allow retries if initial load fails
+      levelLoadStarted = false;
+      levelLoadPromise = null;
+      throw err;
+    }).finally(() => {
+      if (levelLoaded) {
+        levelLoadStarted = false;
+      }
+    });
+    return levelLoadPromise;
+  } catch (err) {
+    console.warn('[Main] loadLevelInBackground failed to start:', err);
+    levelLoadStarted = false;
+    levelLoadPromise = null;
+    return Promise.reject(err);
+  }
+}
 
 function beginGameFlow() {
   if (hasGameStarted) {
@@ -334,6 +341,8 @@ function beginGameFlow() {
   cutscene = new OpeningCutscene();
   levelLoaded = false;
   readyToInit = false;
+  levelLoadStarted = false;
+  levelLoadPromise = null;
 
   // Start cutscene with parallel level loading
   cutscene.play(
@@ -346,24 +355,32 @@ function beginGameFlow() {
       }
     },
     () => {
-      loadLevelInBackground();
+      startLevelLoad();
     }
   );
-}
 
-cutsceneLoadTimer = setTimeout(() => {
-  cutsceneLoadTimer = null;
-  if (!levelLoadStarted) {
-    console.log('[Main] 15s elapsed during cutscene — starting level load now');
-    startLevelLoad();
+  if (cutsceneLoadTimer) {
+    clearTimeout(cutsceneLoadTimer);
   }
-}, 15000);
-
+  cutsceneLoadTimer = setTimeout(() => {
+    cutsceneLoadTimer = null;
+    if (!levelLoaded && !levelLoadPromise) {
+      console.log('[Main] 15s elapsed during cutscene — starting level load now');
+      startLevelLoad();
+    }
+  }, 15000);
+}
 
 let gameController;
 let lights;
 
 async function loadLevelInBackground() {
+  if (levelLoaded) {
+    return;
+  }
+  if (levelLoadPromise && levelLoadStarted) {
+    return levelLoadPromise;
+  }
 
   // Load the level
   await loadLevel("level1", scene);
@@ -384,6 +401,7 @@ async function loadLevelInBackground() {
 
   levelLoaded = true;
   console.log("Level loaded!");
+  levelLoadStarted = false;
 
   // If cutscene already finished, initialize game now
   if (readyToInit) {
