@@ -146,10 +146,6 @@ export class GameController {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
-      default:
-
-      //batteries
-
       case 'Screen001':
         // Open the mini-game (Zip-like) when player interacts with the screen
         try {

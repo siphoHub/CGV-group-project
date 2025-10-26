@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel } from "./core/levelLoader.js";
+import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel, getCurrentLevel } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
@@ -1211,8 +1211,19 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(5.76, 1.7, -1.07);
-  camera.lookAt(-5.25, 1.7, -1.07);
+  let levelName = getCurrentLevel();
+  //level 1 reset
+  if(levelName === "level1"){
+    camera.position.set(0, 1.7, -5);
+    camera.lookAt(0, 1.7, 0);
+  } 
+  
+  //level 3 reset
+  else if (levelName === "level3"){
+    camera.position.set(5.76, 1.7, -1.07);
+    camera.lookAt(-5.25, 1.7, -1.07);
+  }
+
   console.log('[reset] Player position reset');
 }
 
