@@ -929,4 +929,120 @@ export class HUD {
       gameOverScreen.style.display = 'flex';
     }
   }
+
+  // game over battlety depleted
+  onBatteryDepleted() {
+    console.log('[HUD] Battery depleted - triggering game over');
+    this.showMessage('Battery depleted! Game Over.', 4000);
+    window.dispatchEvent(new CustomEvent('battery:depleted'));
+  }
+
+  showGameOverScreen() {
+    // Check if game over screen already exists
+    let gameOverScreen = document.getElementById('game-over-screen');
+
+    if (!gameOverScreen) {
+      gameOverScreen = document.createElement('div');
+      gameOverScreen.id = 'game-over-screen';
+      gameOverScreen.innerHTML = `
+        <div id="game-over-content">
+          <h1>GAME OVER</h1>
+          <p>Your flashlight died...</p>
+          <p class="game-over-subtitle">You couldn't survive in the darkness</p>
+          <button id="restart-button" onclick="window.location.reload()">TRY AGAIN</button>
+        </div>
+      `;
+
+      // Add styles for game over screen
+      const styles = document.createElement('style');
+      styles.textContent = `
+        #game-over-screen {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.95);
+          backdrop-filter: blur(10px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: fadeIn 1s ease-in;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        #game-over-content {
+          text-align: center;
+          color: #fff;
+          max-width: 600px;
+          padding: 40px;
+        }
+
+        #game-over-content h1 {
+          font-size: 4rem;
+          margin: 0 0 20px 0;
+          color: #cc4444;
+          text-shadow: 0 0 20px rgba(204, 68, 68, 0.8), 2px 2px 4px rgba(0, 0, 0, 0.8);
+          letter-spacing: 5px;
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.02); }
+        }
+
+        #game-over-content p {
+          font-size: 1.5rem;
+          margin: 15px 0;
+          color: #ccc;
+          font-family: 'Courier New', monospace;
+        }
+
+        .game-over-subtitle {
+          font-size: 1.2rem !important;
+          color: #888 !important;
+          font-style: italic;
+        }
+
+        #restart-button {
+          margin-top: 30px;
+          background: linear-gradient(135deg, #cc4444, #994444);
+          border: 2px solid #cc4444;
+          border-radius: 8px;
+          padding: 15px 30px;
+          font-size: 1.3rem;
+          font-weight: bold;
+          color: #fff;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          box-shadow: 0 4px 15px rgba(204, 68, 68, 0.4);
+        }
+
+        #restart-button:hover {
+          background: linear-gradient(135deg, #dd5555, #aa5555);
+          border-color: #dd5555;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(204, 68, 68, 0.6);
+        }
+
+        #restart-button:active {
+          transform: translateY(0);
+          box-shadow: 0 3px 10px rgba(204, 68, 68, 0.4);
+        }
+      `;
+
+      document.head.appendChild(styles);
+      document.body.appendChild(gameOverScreen);
+    } else {
+      gameOverScreen.style.display = 'flex';
+    }
+  }
 }

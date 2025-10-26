@@ -1,6 +1,7 @@
 // Game Controller to manage HUD and game state
 import * as THREE from 'three';
 import { HUD } from './hud.js';
+import ZipOverlay from './zipOverlay.js';
 import { showCreditsOverlay } from './credits.js';
 
 export class GameController {
@@ -25,6 +26,7 @@ export class GameController {
 
     // Make sure generator is interactable from start
     this.ensureGeneratorInteractable();
+  // Screen interaction is enabled when the appropriate level is loaded (main.js will call enableScreenInteraction for level3)
 
 
     // Audio system for sound effects
@@ -39,6 +41,18 @@ export class GameController {
 
     this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
+
+  // Mini-game audio cues
+  this.deniedSound = new Audio('../public/models/assets/denied-sound.mp3');
+  this.deniedSound.volume = 0.9;
+  this.selfDestructSound = new Audio('../public/models/assets/self destruct initiated.mp3');
+  this.selfDestructSound.volume = 0.9;
+  // Extra soundtrack to play shortly after successful Zip completion
+  this.surgeonAttackSound = new Audio('../public/models/assets/Samuel_Laflamme_-_Surgeon_Attack_Outlast_OST.mp3');
+  this.surgeonAttackSound.volume = 0.9;
+
+  // Track whether the Zip mini-game has been completed (won) so it cannot be replayed
+  this._zipCompleted = false;
 
     // Initialize lighting to normal state
     this.setLightingState(initialLightingState);
@@ -136,6 +150,22 @@ export class GameController {
 
       //batteries
 
+      case 'Screen001':
+        // Open the mini-game (Zip-like) when player interacts with the screen
+        try {
+          console.log('[Screen001] Interaction triggered - opening mini-game');
+          // Unlock controls so the player can interact with the DOM overlay
+          if (this.controls && typeof this.controls.unlock === 'function') {
+            try { this.controls.unlock(); } finally { /* ignore */ }
+          }
+          this.openZipMiniGame();
+          console.log('[Screen001] openZipMiniGame() called');
+        } catch (e) {
+          console.warn('[Screen001] Failed to open mini-game:', e);
+        }
+        break;
+
+      default:
       if (object.name && object.name.toLowerCase().includes('battery'))
       {
         this.playPickupSound();
@@ -428,6 +458,134 @@ stopRoomFlashing() {
       window.updateInteractableCache();
     } else {
       console.log('[Flashlight] WARNING: updateInteractableCache not available!');
+    }
+  }
+
+  // Enable interaction for Screen001 in level3
+  enableScreenInteraction() {
+    console.log('[Screen] Enabling Screen001 interaction...');
+    let found = false;
+    this.scene.traverse((child) => {
+      if (child.name === 'Screen001') {
+        child.userData.interactable = true;
+        // require E to interact (typical for object interactions)
+        child.userData.requiredKey = 'E';
+        // mark as screen so HUD can show proper label
+        child.userData.interactionType = 'screen';
+        found = true;
+        // optional small glow
+        if (!child.userData.aura && child.parent) {
+          const glow = new THREE.PointLight(0x88ccff, 0.3, 2);
+          glow.position.copy(child.position);
+          child.userData.aura = glow;
+          child.parent.add(glow);
+        }
+        console.log('[Screen] Screen001 made interactable');
+      }
+    });
+
+    if (!found) console.log('[Screen] WARNING: Screen001 not found in scene');
+
+    if (window.updateInteractableCache) {
+      window.updateInteractableCache();
+    } else if (window.refreshInteractableCache) {
+      window.refreshInteractableCache();
+    }
+  }
+
+  // Open a simple lightweight Zip-like mini-game overlay
+  openZipMiniGame() {
+    // Prevent opening multiple times
+    if (this._zipActive) return;
+    if (this._zipCompleted) {
+      // already completed - give feedback
+      this.hud?.showMessage?.('Purge already initiated.', 1800);
+  try { this.selfDestructSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] selfDestructSound play failed', err); }
+      return;
+    }
+    this._zipActive = true;
+
+    // Unlock controls so the overlay can receive DOM input
+    if (this.controls && typeof this.controls.unlock === 'function') {
+      try { this.controls.unlock(); } catch { /* ignore */ }
+    }
+
+    // Demo level data for the ZipOverlay. Replace or extend as needed.
+    const demoLevel = {
+      nodes: [
+        { x: 0.08, y: 0.18, label: '7*7', expr: '7*7' },        // 49
+        { x: 0.28, y: 0.10, label: '94/2', expr: '94/2' },      // 47
+        { x: 0.46, y: 0.16, label: '9*5', expr: '9*5' },        // 45
+        { x: 0.64, y: 0.10, label: '40+1', expr: '40+1' },      // 41
+        { x: 0.82, y: 0.18, label: '3*13', expr: '3*13' },      // 39
+        { x: 0.12, y: 0.46, label: '6*6', expr: '6*6' },        // 36
+        { x: 0.32, y: 0.52, label: '58/2', expr: '58/2' },      // 29
+        { x: 0.52, y: 0.46, label: '46/2', expr: '46/2' },      // 23
+        { x: 0.72, y: 0.56, label: '7+7', expr: '7+7' },        // 14
+        { x: 0.92, y: 0.48, label: '12/2', expr: '12/2' }       // 6
+      ],
+      allowCross: false
+    };
+
+    // Open the ZipOverlay singleton and wire minimal callbacks
+    try {
+      ZipOverlay.open({
+        level: demoLevel,
+        onWin: () => {
+          // mark completed so it cannot be played again
+          this._zipCompleted = true;
+          // disable Screen001 interactable so main loop won't offer it again
+          try {
+            this.scene.traverse((child) => { if (child.name === 'Screen001') { child.userData.interactable = false; } });
+          } catch (err) { console.warn('[Zip] disabling Screen001 failed', err); }
+          try { this.selfDestructSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] selfDestructSound play failed', err); }
+          // Play the surgeon attack OST 2 seconds after successful Zip completion
+          try {
+            setTimeout(() => {
+              try { this.surgeonAttackSound.currentTime = 0; this.surgeonAttackSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] surgeonAttackSound play failed', err); }
+            }, 2000);
+          } catch (err) { console.warn('[Zip] scheduling surgeonAttackSound failed', err); }
+          try { if (this.onZipWin) this.onZipWin(); } catch (err) { console.warn('[Zip] onZipWin handler error', err); }
+          try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+          this._zipActive = false;
+          if (this.controls && typeof this.controls.lock === 'function') {
+            try { this.controls.lock(); } catch (err) { console.warn('[Zip] controls.lock failed', err); }
+          }
+        },
+        onFail: (reason) => {
+          try { this.deniedSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] deniedSound play failed', err); }
+          try { if (this.onZipFail) this.onZipFail(reason); } catch (err) { console.warn('[Zip] onZipFail handler error', err); }
+          // keep _zipActive true so player can retry without re-opening if needed
+          this._zipActive = false;
+        }
+      });
+    } catch (err) {
+      console.warn('[Zip] Failed to open ZipOverlay:', err);
+      this._zipActive = false;
+    }
+  }
+
+  // createZipOverlay is delegated to ZipOverlay module
+  createZipOverlay() {
+    try { ZipOverlay.open(); } catch (e) { console.warn('[Zip] createZipOverlay failed:', e); }
+  }
+
+  endZipGame(won) {
+    // delegate to ZipOverlay for consistent UX
+    try { if (won) window.dispatchEvent(new CustomEvent('zip:won')); } catch (err) { console.warn('[Zip] dispatch zip:won failed', err); }
+    try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+    this._zipActive = false;
+  }
+
+  closeZipMiniGame() {
+    try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+    this._zipActive = false;
+    if (this._zipCleanup) { try { this._zipCleanup(); } catch (err) { console.warn('[Zip] cleanup handler error', err); } finally { this._zipCleanup = null; } }
+    if (this._zipPreviousFocus && typeof this._zipPreviousFocus.focus === 'function') {
+      try { this._zipPreviousFocus.focus(); } catch { /* ignore */ }
+    }
+    if (this.controls && typeof this.controls.lock === 'function') {
+      try { this.controls.lock(); } catch { /* ignore */ }
     }
   }
 
