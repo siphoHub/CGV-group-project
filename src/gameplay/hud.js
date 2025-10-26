@@ -107,6 +107,11 @@ export class HUD {
           </div>
         </div>
       </div>
+
+      <div id="hud-minimap" class="hud-minimap hidden" aria-hidden="true">
+        <img id="hud-minimap-image" src="/models/assets/level3map.png" alt="Level 3 facility layout">
+        <div id="hud-minimap-arrow"></div>
+      </div>
     `;
 
     this.addStyles();
@@ -116,6 +121,19 @@ export class HUD {
     this.createBatteryBars();
     this.updateBatteryDisplay();
     this.setupPauseEventListeners();
+
+    this.minimapContainer = this.hudContainer.querySelector('#hud-minimap');
+    this.minimapArrow = this.hudContainer.querySelector('#hud-minimap-arrow');
+    this.minimapConfig = null;
+    this._handleMinimapConfigure = (event) => this.configureMinimap(event?.detail);
+    this._handleMinimapClear = () => this.clearMinimap();
+
+    window.addEventListener('minimap:configure', this._handleMinimapConfigure);
+    window.addEventListener('minimap:clear', this._handleMinimapClear);
+
+    if (typeof window !== 'undefined' && window.__pendingMinimapDetail) {
+      this.configureMinimap(window.__pendingMinimapDetail);
+    }
   }
 
   addStyles() {
@@ -361,6 +379,43 @@ export class HUD {
       #pause-exit-button:hover{ transform: translateY(-1px); box-shadow:0 12px 30px rgba(0,0,0,.55); }
       #resume-button:active,
       #pause-exit-button:active{ transform: translateY(0); }
+
+      .hud-minimap{
+        position:absolute;
+        bottom:24px;
+        right:24px;
+        width:220px;
+        height:220px;
+        background: rgba(8, 11, 14, 0.92);
+        border:1px solid var(--hud-border);
+        border-radius:12px;
+        overflow:hidden;
+        box-shadow: 0 18px 45px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.03);
+        pointer-events:none;
+      }
+      .hud-minimap img{
+        width:100%;
+        height:100%;
+        object-fit:cover;
+        opacity:0.95;
+        filter: saturate(0.9);
+        pointer-events:none;
+      }
+      .hud-minimap.mirrored-y img{
+        transform: scaleY(-1);
+      }
+      #hud-minimap-arrow{
+        position:absolute;
+        top:50%;
+        left:50%;
+        width:20px;
+        height:28px;
+        background:#ff3b3b;
+        clip-path: polygon(50% 0%, 85% 60%, 65% 60%, 65% 100%, 35% 100%, 35% 60%, 15% 60%);
+        transform: translate(-50%, -50%) rotate(0deg);
+        transform-origin: 50% 50%;
+        filter: drop-shadow(0 0 6px rgba(255, 59, 59, 0.4));
+      }
 
       /* UTILS */
       .hidden{ display:none !important; }
@@ -629,6 +684,134 @@ export class HUD {
 
   getPauseState() {
     return this.isPaused;
+  }
+
+  configureMinimap(detail = {}) {
+    if (!this.minimapContainer || !detail) return;
+
+    const min = detail.min;
+    const max = detail.max;
+
+    if (!min || !max) {
+      this.clearMinimap();
+      return;
+    }
+
+    const scaleX = detail.scale?.x ?? 1;
+    const scaleZ = detail.scale?.z ?? 1;
+    const offsetX = detail.offset?.x ?? 0;
+    const offsetZ = detail.offset?.z ?? 0;
+    const imageScaleX = detail.imageScale?.x ?? 1;
+    const imageScaleY = detail.imageScale?.y ?? 1;
+    const imageOffsetX = detail.imageOffset?.x ?? 0;
+    const imageOffsetY = detail.imageOffset?.y ?? 0;
+    const mirrorY = Boolean(detail.mirrorY);
+
+    const minRawX = min.x ?? 0;
+    const minRawZ = min.z ?? 0;
+    const maxRawX = max.x ?? 1;
+    const maxRawZ = max.z ?? 1;
+
+    const minX = minRawX * scaleX + offsetX;
+    const maxX = maxRawX * scaleX + offsetX;
+    const minZ = minRawZ * scaleZ + offsetZ;
+    const maxZ = maxRawZ * scaleZ + offsetZ;
+
+    this.minimapConfig = {
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      flipY: detail.flipY !== false,
+      level: detail.level || null,
+      scaleX,
+      scaleZ,
+      offsetX,
+      offsetZ,
+      imageScaleX,
+      imageScaleY,
+      imageOffsetX,
+      imageOffsetY,
+      mirrorY
+    };
+
+    this.minimapContainer.classList.remove('hidden');
+    this.minimapContainer.setAttribute('aria-hidden', 'false');
+    this.minimapContainer.classList.toggle('mirrored-y', mirrorY);
+
+    if (typeof window !== 'undefined') {
+      window.__pendingMinimapDetail = {
+        level: detail.level || null,
+        min: { x: minRawX, z: minRawZ },
+        max: { x: maxRawX, z: maxRawZ },
+        flipY: detail.flipY !== false,
+        scale: { x: scaleX, z: scaleZ },
+        offset: { x: offsetX, z: offsetZ },
+        imageScale: { x: imageScaleX, y: imageScaleY },
+        imageOffset: { x: imageOffsetX, y: imageOffsetY },
+        mirrorY
+      };
+      window.__activeMinimapConfig = this.minimapConfig;
+    }
+  }
+
+  clearMinimap() {
+    this.minimapConfig = null;
+    if (this.minimapContainer) {
+      this.minimapContainer.classList.add('hidden');
+      this.minimapContainer.setAttribute('aria-hidden', 'true');
+      this.minimapContainer.classList.remove('mirrored-y');
+    }
+    if (typeof window !== 'undefined') {
+      window.__pendingMinimapDetail = null;
+      window.__activeMinimapConfig = null;
+    }
+  }
+
+  updateMinimap(position, direction) {
+    if (!this.minimapConfig || !this.minimapArrow || !this.minimapContainer || !position) return;
+
+    const {
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      flipY,
+      scaleX,
+      scaleZ,
+      offsetX,
+      offsetZ,
+      imageScaleX,
+      imageScaleY,
+      imageOffsetX,
+      imageOffsetY,
+      mirrorY
+    } = this.minimapConfig;
+    const width = this.minimapContainer.clientWidth || 1;
+    const height = this.minimapContainer.clientHeight || 1;
+
+    const rangeX = Math.max(1e-5, maxX - minX);
+    const rangeZ = Math.max(1e-5, maxZ - minZ);
+
+    const mappedX = position.x * scaleX + offsetX;
+    const mappedZ = position.z * scaleZ + offsetZ;
+
+    const normX = Math.min(Math.max((mappedX - minX) / rangeX, 0), 1);
+    const normZ = Math.min(Math.max((mappedZ - minZ) / rangeZ, 0), 1);
+
+    const px = (imageOffsetX + normX * imageScaleX) * width;
+    const zNorm = flipY ? 1 - normZ : normZ;
+    const displayZ = mirrorY ? 1 - zNorm : zNorm;
+    const py = (imageOffsetY + displayZ * imageScaleY) * height;
+
+    this.minimapArrow.style.left = `${px}px`;
+    this.minimapArrow.style.top = `${py}px`;
+
+    if (direction) {
+      const angleRad = Math.atan2(direction.x, mirrorY ? -direction.z : direction.z);
+      const angleDeg = angleRad * (180 / Math.PI);
+      this.minimapArrow.style.transform = `translate(-50%, -50%) rotate(${angleDeg.toFixed(1)}deg)`;
+    }
   }
 
   // game over battlety depleted

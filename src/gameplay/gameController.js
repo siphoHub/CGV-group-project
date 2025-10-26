@@ -87,12 +87,24 @@ export class GameController {
       this.handleGameOver();
     });
 
+    // End the level when level3 exit is triggered
+    window.addEventListener('level3:exit', () => {
+      this.onLevel3ExitReached();
+    });
+
   }
 
   // Handle object interactions from main.js
   handleInteraction(object)
   {
     if (!object.userData.interactable) return;
+
+    // Exit door (level 3)
+    if (object.userData?.interactionType === 'exit') {
+      // allow both: main calling handleInteraction, or node.userData.onInteract hitting the event
+      this.onLevel3ExitReached();
+      return;
+    }
 
     switch (object.name) {
       case 'Flash_Light_Body_high':
@@ -216,30 +228,26 @@ export class GameController {
 
   // Update method to be called in the main animation loop
   update() {
-    if (this.flashlight) {
+    const direction = new THREE.Vector3();
+    this.camera.getWorldDirection(direction);
 
-      // Always move flashlight to camera
+    if (this.flashlight) {
       this.flashlight.position.copy(this.camera.position);
 
-      // Point in the direction camera is facing
-      const direction = new THREE.Vector3();
-      this.camera.getWorldDirection(direction);
-
-      const targetPos = this.camera.position.clone().add(direction.multiplyScalar(10));
+      // Aim flashlight where the camera is facing
+      const targetPos = this.camera.position.clone().add(direction.clone().multiplyScalar(10));
       this.flashlight.target.position.copy(targetPos);
 
-      // Only make it visible if toggled on
       const flashlightState = this.hud.getFlashlightState();
       this.flashlight.visible = flashlightState.isOn && flashlightState.energy > 0;
-
-      // Update intensity
       this.flashlight.intensity = Math.max(0.1, flashlightState.energy / 100);
 
-      if (this.lights.updateFlashlightBeam)
-      {
+      if (this.lights.updateFlashlightBeam) {
         this.lights.updateFlashlightBeam();
       }
     }
+
+    this.hud.updateMinimap(this.camera.position, direction);
   }
 
   // Lighting state management
