@@ -58,12 +58,15 @@ export class StartScreen {
           <div class="panel-title">CONTROL SCHEMA</div>
           <div class="grid">
             <div class="row"><span class="key">W A S D</span><span>Move</span></div>
+            <div class="row"><span class="key">Shift</span><span>Hold to sprint</span></div>
             <div class="row"><span class="key">Mouse</span><span>Look around</span></div>
             <div class="row"><span class="key">E</span><span>Interact / Use</span></div>
             <div class="row"><span class="key">F</span><span>Toggle Flashlight</span></div>
             <div class="row"><span class="key">C</span><span>Crouch</span></div>
             <div class="row"><span class="key">P</span><span>Pause</span></div>
             <div class="row"><span class="key">M</span><span>Toggle Music</span></div>
+            <div class="row"><span class="key">V</span><span>Toggle Coordinate HUD</span></div>
+            <div class="row"><span class="key">R</span><span>Reset Position</span></div>
           </div>
           <button id="controls-close" class="ss-btn ss-btn-primary small" aria-label="Close Controls">CLOSE</button>
         </div>
