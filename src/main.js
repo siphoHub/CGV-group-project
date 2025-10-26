@@ -756,19 +756,44 @@ function initializeGame(lights) {
   const interactionDistance = 1.8;
 
   document.addEventListener("keydown", (event) => {
-    if (event.code !== interactKey || !controls.isLocked) return;
+    if (event.code !== interactKey) return;
+    if (!controls.isLocked) {
+      console.log('[Interact] E pressed while controls unlocked – ignoring');
+      return;
+    }
 
     let nearest = null;
     let best = interactionDistance;
     scene.traverse((obj) => {
+      if (obj.userData?.interactionType === 'exit') {
+        const exitDist = computeInteractDistance(obj);
+        console.log('[Interact][scan exit]', {
+          name: obj.name,
+          uuid: obj.uuid,
+          dist: exitDist,
+          interactable: obj.userData?.interactable,
+          hasOnInteract: typeof obj.userData?.onInteract === 'function'
+        });
+      }
       if (obj.userData?.interactable) {
-        const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+        const d = computeInteractDistance(obj);
         if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
       }
     });
     
   if (nearest) {
-      console.log('[Interact] E pressed. nearest=', nearest.name, 'interactionType=', nearest.userData?.interactionType, 'hasOnInteract=', typeof nearest.userData?.onInteract === 'function');
+      if (nearest.userData?.interactionType === 'exit') {
+        const dbg = (window.level3ExitNodes || []).map(n => `${n.name}:${n.uuid}`);
+        console.log('[Interact][exit] active exit nodes:', dbg);
+        console.log('[Interact][exit] nearest metadata:', {
+          name: nearest.name,
+          uuid: nearest.uuid,
+          interactable: nearest.userData.interactable,
+          hasGetLabel: typeof nearest.userData.getInteractLabel === 'function'
+        });
+      } else {
+        console.log('[Interact] E pressed. nearest=', nearest.name, 'interactionType=', nearest.userData?.interactionType, 'hasOnInteract=', typeof nearest.userData?.onInteract === 'function');
+      }
       // Debug: list hinged doors
       if (Array.isArray(window.levelHingedDoors)) {
         console.log('[Interact] levelHingedDoors count=', window.levelHingedDoors.length, window.levelHingedDoors.map(h=>h.mesh.name));
@@ -813,6 +838,15 @@ function initializeGame(lights) {
         // Unlock controls so player can interact with UI
         controls.unlock();
         console.log('[SafeBox] Opening safe box interface');
+      } else if (nearest.userData.interactionType === 'exit') {
+        console.log('[Interact][exit] triggering exit on', nearest.name);
+        let handled = false;
+        if (typeof nearest.userData.onInteract === 'function') {
+          try { nearest.userData.onInteract(nearest); handled = true; } catch (e) { console.warn('[Interact][exit] onInteract failed', e); }
+        }
+        if (!handled && gameController) {
+          gameController.handleInteraction(nearest);
+        }
       } else if (nearest.userData.interactionType === 'door') {
         // Prefer calling object-defined interaction (e.g. HingedDoor provides onInteract)
         if (typeof nearest.userData.onInteract === 'function') {
@@ -852,6 +886,8 @@ function initializeGame(lights) {
         // Regular interaction
         gameController.handleInteraction(nearest);
       }
+    } else {
+      console.log('[Interact] E pressed but no interactable within range (best=', best.toFixed(2), ')');
     }
   });
 }
@@ -1020,6 +1056,42 @@ function worldToScreen(worldPos) {
   return { x, y };
 }
 
+// Shared helper: distance from camera to mesh or its bounds (exit doors have pivot offsets)
+const _interactTmpVec = new THREE.Vector3();
+const _interactTmpBox = new THREE.Box3();
+const _interactTmpPoint = new THREE.Vector3();
+function computeInteractDistance(obj) {
+  if (!obj) return Infinity;
+
+  let dist = Infinity;
+  try {
+    obj.getWorldPosition(_interactTmpVec);
+    dist = camera.position.distanceTo(_interactTmpVec);
+  } catch {
+    // ignore missing world position
+  }
+
+  try {
+    _interactTmpBox.setFromObject(obj);
+    if (
+      Number.isFinite(_interactTmpBox.min.x) &&
+      Number.isFinite(_interactTmpBox.min.y) &&
+      Number.isFinite(_interactTmpBox.min.z) &&
+      Number.isFinite(_interactTmpBox.max.x) &&
+      Number.isFinite(_interactTmpBox.max.y) &&
+      Number.isFinite(_interactTmpBox.max.z)
+    ) {
+      _interactTmpBox.clampPoint(camera.position, _interactTmpPoint);
+      const boxDist = camera.position.distanceTo(_interactTmpPoint);
+      dist = Math.min(dist, boxDist);
+    }
+  } catch {
+    // Some helper objects (AxesHelper, etc.) can throw; ignore
+  }
+
+  return dist;
+}
+
 // Cache interactable objects to avoid scene traversal every frame
 let cachedInteractables = [];
 
@@ -1035,7 +1107,8 @@ function updateInteractableCache() {
   });
   // Update global reference
   window.cachedInteractables = cachedInteractables;
-  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`);
+  const names = cachedInteractables.map(o => `${o.name || '(unnamed)'}:${o.userData?.interactionType || 'unknown'}`);
+  console.log(`[Performance] Cached ${cachedInteractables.length} interactable objects`, names);
 }
 
 // Add function to refresh cache when objects become non-interactable
@@ -1104,7 +1177,7 @@ function checkForInteractables() {
   for (const obj of cachedInteractables) {
     if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
     
-    const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+    const d = computeInteractDistance(obj);
 
     // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
@@ -1137,6 +1210,7 @@ function checkForInteractables() {
     const isSafeBox = target.name === "Cube014_1" && target.userData.interactionType === "safebox";
     const isElevator = target.name === "Mesh_0001" && target.userData.interactionType === "elevator";
     const isDoor = target.userData.interactionType === "door";
+    const isExit = target.userData.interactionType === "exit";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
     
     if (isGenerator) {
@@ -1154,6 +1228,13 @@ function checkForInteractables() {
     } else if (isSafeBox) {
       p.y += 0.5; // Higher position for safe box
       interactionIndicator.textContent = "Press E to unlock SafeBox";
+    } else if (isExit) {
+      p.y += 0.5;
+      if (typeof target.userData?.getInteractLabel === "function") {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        interactionIndicator.textContent = "Press E to Exit";
+      }
     } else if (isDoor) {
       p.y += 0.5; // Higher position for doors
       // If the object provides a custom interact label (e.g. HingedDoor), use it

@@ -230,6 +230,169 @@ export default async function loadLevel3(scene) {
         }
       }
 
+      // --- EXIT DOOR WIRING -------------------------------------------------------
+      const EXIT_DOOR_NAMES = [
+        "Object_2011",
+        "5ff867c60d244fe1bbf25826980a7c3b.obj.cleaner.materialmerger.gle",
+        "Object_2.011",
+        "exitDoor",
+        "Sketchfab_model.002",
+      ];
+
+      // ---- Ultra-loose name matching (strips spaces, _, -, and .) ----
+      function normalizeName(s) {
+        return (s || "")
+          .toLowerCase()
+          .trim()
+          .replace(/[\s_\-.]+/g, ""); // strip spaces/underscores/hyphens/dots
+      }
+
+      function getNodeByLooseName(root, targetName) {
+        if (!targetName) return null;
+
+        // 1) exact fast path
+        let node = root.getObjectByName(targetName);
+        if (node) return node;
+
+        // 2) collect all named nodes once
+        const all = [];
+        root.traverse(o => { if (o.name) all.push(o); });
+
+        // 3) case-insensitive exact
+        const tLower = targetName.toLowerCase();
+        node = all.find(o => o.name.toLowerCase() === tLower);
+        if (node) return node;
+
+        // 4) normalized equal
+        const tNorm = normalizeName(targetName);
+        // try exact normalized equality first
+        node = all.find(o => normalizeName(o.name) === tNorm);
+        if (node) return node;
+
+        // 5) startsWith either way (normalized) — good for “doorBlue” vs “doorBlue001”
+        node = all.find(o => {
+          const n = normalizeName(o.name);
+          return n.startsWith(tNorm) || tNorm.startsWith(n);
+        });
+        if (node) return node;
+
+        // 6) includes either way (normalized)
+        node = all.find(o => {
+          const n = normalizeName(o.name);
+          return n.includes(tNorm) || tNorm.includes(n);
+        });
+        if (node) return node;
+
+        console.warn("[level3] could not find node by name:", targetName);
+        return null;
+      }
+
+      function findExitNode(root) {
+        // try candidates by loose name
+        for (const nm of EXIT_DOOR_NAMES) {
+          const n = getNodeByLooseName(root, nm);
+          if (n) return n;
+        }
+        // last resort: pick the *largest door-like* object by bounding box height+width
+        let best = null, bestScore = -Infinity;
+        root.traverse(o => {
+          if (!o.isMesh || !o.visible) return;
+          const name = (o.name || "").toLowerCase();
+          if (!name.includes("door")) return;
+          const box = new THREE.Box3().setFromObject(o);
+          if (!isFinite(box.min.x)) return;
+          const size = new THREE.Vector3(); box.getSize(size);
+          const score = size.x + size.y; // “big door-ish”
+          if (score > bestScore) { bestScore = score; best = o; }
+        });
+        return best;
+      }
+
+      function collectExitNodes(root) {
+        const set = new Set();
+        for (const nm of EXIT_DOOR_NAMES) {
+          const node = getNodeByLooseName(root, nm);
+          if (node) set.add(node);
+        }
+        if (set.size === 0) {
+          const fallback = findExitNode(root);
+          if (fallback) set.add(fallback);
+        }
+        return Array.from(set);
+      }
+
+      function applyExitInteraction(node) {
+        console.log(`[level3] tagging exit root "${node.name}" (uuid=${node.uuid})`);
+        const dispatchExit = () => {
+          console.log(`[level3] dispatching level3:exit from "${node.name}"`);
+          window.dispatchEvent(new CustomEvent("level3:exit", {
+            detail: { source: node.name }
+          }));
+        };
+
+        const tagNode = (target) => {
+          const prevType = target.userData.interactionType;
+          target.userData.interactable = true;
+          target.userData.interactionType = "exit";
+          target.userData.getInteractLabel = () => "Press E to Exit";
+          target.userData.onInteract = dispatchExit;
+          console.log(`[level3]  ↳ tagged "${target.name || "(unnamed)"}" as exit (was ${prevType || "unset"})`);
+        };
+
+        tagNode(node);
+        node.traverse((child) => {
+          if (child !== node && child.isMesh) {
+            tagNode(child);
+          }
+        });
+      }
+
+      function wireExitInteractable(root) {
+        const nodes = collectExitNodes(root);
+        if (nodes.length === 0) {
+          console.warn("[level3] no exit door found");
+          return [];
+        }
+
+        for (const node of nodes) {
+          applyExitInteraction(node);
+          console.log(`[level3] exit wired on "${node.name}"`);
+        }
+
+        if (typeof window !== "undefined") {
+          window.level3ExitNodes = nodes;
+          try {
+            window.dispatchEvent(new CustomEvent("debug:level3:exitNodes", {
+              detail: nodes.map(n => ({ name: n.name, uuid: n.uuid }))
+            }));
+          } catch (err) {
+            console.warn("[level3] failed to emit debug exit nodes event:", err);
+          }
+
+          if (typeof window.updateInteractableCache === "function") {
+            window.updateInteractableCache();
+            setTimeout(() => {
+              try { window.updateInteractableCache?.(); } catch (err) {
+                console.warn("[level3] deferred interactable cache refresh failed:", err);
+              }
+            }, 0);
+          } else {
+            console.warn("[level3] updateInteractableCache unavailable when wiring exit; retrying soon");
+            setTimeout(() => {
+              try {
+                window.updateInteractableCache?.();
+              } catch (err) {
+                console.warn("[level3] retry interactable cache refresh failed:", err);
+              }
+            }, 500);
+          }
+        }
+
+        return nodes;
+      }
+
+      wireExitInteractable(lab);
+
       // Instantiate HingedDoor for named doors (create for both Cube_Door_0 and J_2b17 if present)
       try {
         // Create hinged doors for important doors in this level (exclude Cube_Door_0)
