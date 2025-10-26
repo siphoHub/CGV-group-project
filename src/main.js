@@ -10,7 +10,6 @@ import { StartScreen } from "./gameplay/startScreen.js";
 
 import { cutscene12 } from "./gameplay/cutscene12.js";    
 import { cutscene23 } from "./gameplay/cutscene23.js";
-import {endcutscene} from "./gameplay/endcutscene.js";
 
 
 addEventListener("keydown", (e) => {
@@ -330,9 +329,6 @@ let _cutscene23Playing = false;
 let cutsceneLoadTimer = null;
 let levelLoadStarted = false;
 let levelLoadPromise = null;
-
-
-
 
 function startLevelLoad() {
   if (levelLoaded) return levelLoadPromise || Promise.resolve();
@@ -1006,8 +1002,7 @@ function initializeGame(lights) {
   const interactionDistance = 1.8;
 
   document.addEventListener("keydown", (event) => {
-    if (event.code !== interactKey) return;    
-
+    if (event.code !== interactKey) return;
     if (!controls.isLocked) {
       console.log('[Interact] E pressed while controls unlocked – ignoring');
       return;
@@ -1123,9 +1118,6 @@ function initializeGame(lights) {
         if (!handled && gameController) {
           gameController.handleInteraction(nearest);
         }
-
-
-
       } else if (nearest.userData.interactionType === 'door') {
         // Prefer calling object-defined interaction (e.g. HingedDoor provides onInteract)
         if (typeof nearest.userData.onInteract === 'function') {
@@ -1727,7 +1719,7 @@ if (window.location.search.includes('debug')) {
 function animate() {
   const dt = Math.min(0.1, clock.getDelta());   // clamp large frame gaps
   frameCount++;
-
+  
   // Performance monitoring
   const currentTime = performance.now();
   const frameDelta = currentTime - lastFrameTime;
