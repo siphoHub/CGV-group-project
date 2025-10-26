@@ -2,6 +2,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
+import { endcutscene as EndCutscene } from "../gameplay/endcutscene.js";
+
 export default async function loadLevel3(scene) {
   const loader = new GLTFLoader();
 
@@ -12,6 +14,9 @@ export default async function loadLevel3(scene) {
      const lab = gltf.scene;
       lab.scale.set(1, 1, 1);
       lab.position.set(0, 1.5, 0);
+
+      // Track if we've already started the end cutscene (prevents double trigger)
+      let hasPlayedLevel3Ending = false;
 
       // Enable shadows on all meshes
       const colliders = [];
@@ -438,13 +443,69 @@ export default async function loadLevel3(scene) {
         return Array.from(set);
       }
 
+
+       // Call this before starting the end cutscene
+  function preEndCleanup() {
+    // Block further input
+    try { window.__suppressInput = true; } catch {}
+    try { controls?.unlock?.(); } catch {}
+    try { controls && (controls.enabled = false); } catch {}
+
+    // Stop any level timer (cover common patterns + broadcast)
+    try { window.dispatchEvent(new Event('timer:stop')); } catch {}
+    try { gameController?.timer?.stop?.(); } catch {}
+    try { if (window.__levelTimerInterval) clearInterval(window.__levelTimerInterval); } catch {}
+
+    // Fade/stop audio
+    try { gameController?.audio?.stopFootsteps?.(); } catch {}
+    try { gameController?.audio?.fadeAmbient?.(0, 600); } catch {}
+    try { gameController?.audio?.muteGroup?.('sfx'); } catch {}
+
+    // Pause/minimize HUD systems
+    try { window.dispatchEvent(new Event('minimap:pause')); } catch {}
+    try { document.getElementById('interaction-indicator')?.style && (document.getElementById('interaction-indicator').style.display = 'none'); } catch {}
+    try { document.getElementById('crosshair')?.style && (document.getElementById('crosshair').style.display = 'none'); } catch {}
+  }
+
       function applyExitInteraction(node) {
         console.log(`[level3] tagging exit root "${node.name}" (uuid=${node.uuid})`);
-        const dispatchExit = () => {
-          console.log(`[level3] dispatching level3:exit from "${node.name}"`);
-          window.dispatchEvent(new CustomEvent("level3:exit", {
-            detail: { source: node.name }
-          }));
+        // const dispatchExit = () => {
+        //   console.log(`[level3] dispatching level3:exit from "${node.name}"`);
+        //   window.dispatchEvent(new CustomEvent("level3:exit", {
+        //     detail: { source: node.name }
+        //   }));
+        // };
+
+         const dispatchExit = () => {
+          // Play end cutscene first, then dispatch level3:exit so credits run after it
+          if (!hasPlayedLevel3Ending) {
+            hasPlayedLevel3Ending = true;
+
+             // Stop timers, HUD, input, audio before cutscene
+        try { preEndCleanup(); } catch {}
+        
+            try { document.exitPointerLock && document.exitPointerLock(); } catch {}
+
+            try {
+              const cs = new EndCutscene('/models/assets/endcutscene.png');
+              cs.play(() => {
+                console.log(`[level3] cutscene complete, dispatching level3:exit from "${node.name}"`);
+                window.dispatchEvent(new CustomEvent("level3:exit", {
+                  detail: { source: node.name }
+                }));
+              });
+            } catch (err) {
+              console.warn('[level3] endcutscene failed, falling back to direct exit:', err);
+              window.dispatchEvent(new CustomEvent("level3:exit", {
+                detail: { source: node.name, error: String(err) }
+              }));
+            }
+          } else {
+            // Already played; go straight to exit
+            window.dispatchEvent(new CustomEvent("level3:exit", {
+              detail: { source: node.name, skippedCutscene: true }
+            }));
+          }
         };
 
         const tagNode = (target) => {
