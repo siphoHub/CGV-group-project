@@ -16,6 +16,7 @@ export default async function loadLevel3(scene) {
       // Enable shadows on all meshes
       const colliders = [];
       const rayTargets = [];
+      const mapMeshes = [];
 
       lab.traverse((child) => {
         if (child.isMesh) {
@@ -53,11 +54,65 @@ export default async function loadLevel3(scene) {
             if (child.name === 'map'){
               child.userData.interactable = true;
               child.userData.interactionType = 'map';
+              child.userData.getInteractLabel = () => 'Press E to pick up map';
+              child.userData.isMapPickup = true;
+              mapMeshes.push(child);
               console.log(`[Level3] Marked ${child.name} as mapL3`);
             }
           }
         }
       });
+
+      if (mapMeshes.length > 0) {
+        // Add a translucent highlight sphere so players can spot the map pickup easily
+        const highlightGeometry = new THREE.SphereGeometry(1, 24, 24);
+        const baseMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.25,
+          depthTest: false,
+          depthWrite: false,
+        });
+        mapMeshes.forEach((mapMesh) => {
+          try {
+            const highlight = new THREE.Mesh(highlightGeometry, baseMaterial.clone());
+            highlight.name = `${mapMesh.name || 'map'}_highlight`;
+            highlight.castShadow = false;
+            highlight.receiveShadow = false;
+            highlight.renderOrder = 999;
+            highlight.userData.isMapHighlight = true;
+            highlight.userData.ignoreInteract = true;
+            highlight.userData.isHelper = true;
+
+            let radius = 0.6;
+            const center = new THREE.Vector3();
+            if (mapMesh.geometry) {
+              if (!mapMesh.geometry.boundingSphere) {
+                mapMesh.geometry.computeBoundingSphere();
+              }
+              if (mapMesh.geometry.boundingSphere) {
+                const { center: bsCenter, radius: bsRadius } = mapMesh.geometry.boundingSphere;
+                center.copy(bsCenter);
+                radius = Math.max(radius, bsRadius * 1.4);
+              } else {
+                mapMesh.geometry.computeBoundingBox();
+                if (mapMesh.geometry.boundingBox) {
+                  mapMesh.geometry.boundingBox.getCenter(center);
+                  const size = mapMesh.geometry.boundingBox.getSize(new THREE.Vector3());
+                  radius = Math.max(radius, Math.max(size.x, size.y, size.z) * 0.75);
+                }
+              }
+            }
+
+            highlight.position.copy(center);
+            highlight.scale.setScalar(radius);
+            mapMesh.add(highlight);
+            mapMesh.userData.mapHighlight = highlight;
+          } catch (err) {
+            console.warn('[Level3] Failed to create map highlight', err);
+          }
+        });
+      }
 
       scene.add(lab);
 
@@ -78,10 +133,15 @@ export default async function loadLevel3(scene) {
             imageScale: { x: mapContentScale, y: mapContentScale },
             imageOffset: { x: mapContentOffset, y: mapContentOffset }
           };
-          window.__pendingMinimapDetail = minimapDetail;
-          window.dispatchEvent(new CustomEvent('minimap:configure', {
-            detail: minimapDetail
-          }));
+          if (typeof window.__level3MinimapDetail === 'undefined') {
+            window.__level3MinimapDetail = null;
+          }
+          window.__level3MinimapDetail = minimapDetail;
+          window.__level3MinimapUnlocked = false;
+          window.__pendingMinimapDetail = null;
+          window.__activeMinimapConfig = null;
+          window.dispatchEvent(new Event('minimap:clear'));
+          console.log('[Level3] Minimap prepared but hidden until map is collected');
         } else {
           console.warn('[Level3] Unable to compute minimap bounds for level 3');
         }

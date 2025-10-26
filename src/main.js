@@ -881,7 +881,53 @@ function initializeGame(lights) {
           console.log('[Elevator] Flashlight required to use elevator');
         }
       }else if (nearest.userData.interactionType === 'map'){
-        //nothing yet
+        if (nearest.userData.mapUnlocked) {
+          console.log('[Level3][Map] Map already collected, minimap should be active');
+          return;
+        }
+
+        if (gameController && typeof gameController.playPickupSound === 'function') {
+          gameController.playPickupSound();
+        }
+
+        const minimapDetail = (typeof window !== 'undefined'
+          ? window.__level3MinimapDetail || window.__pendingMinimapDetail
+          : null);
+
+        if (minimapDetail) {
+          if (typeof window !== 'undefined') {
+            window.__level3MinimapUnlocked = true;
+            window.__pendingMinimapDetail = minimapDetail;
+            window.dispatchEvent(new CustomEvent('minimap:configure', { detail: minimapDetail }));
+          }
+        } else {
+          console.warn('[Level3][Map] No minimap detail available to configure');
+        }
+
+        nearest.userData.mapUnlocked = true;
+        nearest.userData.interactable = false;
+        nearest.userData.interactionType = 'map-used';
+        if (nearest.userData.getInteractLabel) {
+          delete nearest.userData.getInteractLabel;
+        }
+
+        if (nearest.userData.mapHighlight) {
+          const highlight = nearest.userData.mapHighlight;
+          if (highlight && highlight.parent) {
+            highlight.parent.remove(highlight);
+          }
+          nearest.userData.mapHighlight = null;
+        }
+
+        if (nearest.parent) {
+          nearest.parent.remove(nearest);
+        } else {
+          nearest.visible = false;
+        }
+
+        if (typeof refreshInteractableCache === 'function') {
+          refreshInteractableCache();
+        }
       }else {
         // Regular interaction
         gameController.handleInteraction(nearest);
@@ -1264,7 +1310,11 @@ function checkForInteractables() {
       }
     } else {
       p.y += 0.5; // Higher position for other objects
-      interactionIndicator.textContent = "Press E to interact";
+      if (typeof target.userData?.getInteractLabel === 'function') {
+        interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else {
+        interactionIndicator.textContent = "Press E to interact";
+      }
     }
     
     const s = worldToScreen(p);
