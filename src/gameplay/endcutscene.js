@@ -66,7 +66,7 @@ export class endcutscene{
                 
                 <div id="free">I should feel free.</div>
 
-                <div id="but">But all I can think about is what it cost to get here.</div>
+                <div id="but">But all I can think about is what it cost to get here...</div>
                 
                
 
@@ -172,14 +172,15 @@ export class endcutscene{
 
 
     startAnimations() {
+        this.playBackgroundSound({ startQuiet: true });
         this.playFireSound();
 
         const dialogues = [
             { id: 'intro', delay: 2000 },
-            {id: 'wiped', delay: 6000 },
-            { id: 'did', delay: 10000 },
-            { id: 'free', delay: 14000 },
-            { id: 'but', delay: 21000 },
+            {id: 'did', delay: 7000 },
+            { id: 'wiped', delay: 12000 },
+            { id: 'free', delay: 17000 },
+            { id: 'but', delay: 23000 },
         ];
 
         dialogues.forEach((dialogue, index) => {
@@ -191,30 +192,50 @@ export class endcutscene{
 
     }
 
-    playFireSound() {
-        this.fireSound = new Audio('models/assets/firesound.wav');
-        this.fireSound.loop = false;
-        this.fireSound.volume = 0.5;
+    // Small helper to fade volume smoothly
+    _fadeVolume(audio, from, to, durationMs = 800) {
+        if (!audio) return;
+        const steps = 24;
+        const stepTime = Math.max(16, Math.floor(durationMs / steps));
+        let current = 0;
+        audio.volume = from;
+        const delta = (to - from) / steps;
+        const id = setInterval(() => {
+            current += 1;
+            audio.volume = Math.max(0, Math.min(1, audio.volume + delta));
+            if (current >= steps) clearInterval(id);
+        }, stepTime);
+    }
 
-        // When fire sound finishes, start the background end sound
+   playFireSound() {
+        this.fireSound = new Audio('../public/models/assets/firesound.wav');
+        this.fireSound.loop = false;
+        this.fireSound.volume = 0.6; // foreground
+
+        // After fire ends, gently bring background up a bit
         this._onFireEnded = () => {
-            if (!this.isPlaying) return; // cutscene was skipped/ended
-            this.playBackgroundSound();
+            if (!this.isPlaying) return;
+            if (this.endSound) {
+                this._fadeVolume(this.endSound, this.endSound.volume, 0.35, 1200);
+            }
         };
-        // once:true auto-removes after it fires
         this.fireSound.addEventListener('ended', this._onFireEnded, { once: true });
 
         this.fireSound.play().catch(() => {});
     }
 
-    playBackgroundSound() {
-        if (!this.isPlaying) return; // don't start if already ended
+   playBackgroundSound({ startQuiet = false } = {}) {
+        if (!this.isPlaying) return;
         if (!this.endSound) {
-            this.endSound = new Audio('models/assets/scary-horror-music-351315.mp3');
+            this.endSound = new Audio('../public/models/assets/scary-horror-music-351315.mp3');
             this.endSound.loop = true;
-            this.endSound.volume = 0.5;
+            this.endSound.volume = startQuiet ? 0.08 : 0.35; // underlay
+        } else if (startQuiet) {
+            this.endSound.volume = Math.min(this.endSound.volume, 0.08);
         }
         this.endSound.play().catch(() => {});
+        // If we started quiet, fade in slightly so it sits under the fire
+        if (startQuiet) this._fadeVolume(this.endSound, this.endSound.volume, 0.18, 900);
     }
 
     // Stop sounds safely
@@ -299,6 +320,10 @@ export class endcutscene{
         this.cutsceneContainer?.remove();
         document.getElementById('cutscene-styles')?.remove();
         this.cutsceneContainer = null;
+
+         // Notify listeners that the cutscene finished
+        try { window.dispatchEvent(new CustomEvent('endcutscene:finished')); } catch {}
+
         
         // Call completion callback
         if (this.onComplete) {

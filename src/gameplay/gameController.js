@@ -4,6 +4,8 @@ import { HUD } from './hud.js';
 import ZipOverlay from './zipOverlay.js';
 import { showCreditsOverlay } from './credits.js';
 
+import { endcutscene } from './endcutscene.js';
+
 export class GameController {
   constructor(scene, camera,lights, controls,initialLightingState='normal') {
     this.scene = scene;
@@ -103,6 +105,7 @@ export class GameController {
 
     // End the level when level3 exit is triggered
     window.addEventListener('level3:exit', () => {
+      //GATE THE EXIT BY ZIP WIN
       this.onLevel3ExitReached();
     });
 
@@ -1048,14 +1051,57 @@ stopRoomFlashing() {
     });
   }
 
-  onLevel3ExitReached() {
+
+  //END CUTSCENE
+      playEndcutscene() {
+    // Allow DOM overlay input if your cutscene uses it
+    try { this.controls?.unlock?.(); } catch (err) { void err; }
+
+    // Return a promise that resolves when the cutscene finishes.
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+
+      try {
+        // Use same asset base as the rest of the project
+        const endcut = new endcutscene('../public/models/assets/endcutscene.png');
+        // START the cutscene and resolve when it completes
+        try { endcut.play(finish); } catch (e) { void e; }
+      } catch (e) { /* if construction fails, fall through to timeout */ }
+
+      // Fallback: listen for a global signal if endcutscene dispatches one
+      window.addEventListener('endcutscene:finished', finish, { once: true });
+
+      // Safety timeout so we always progress (20s)
+      setTimeout(finish, 20000);
+    });
+  }
+
+  // onLevel3ExitReached() {
+  //   // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
+  //   this.completeObjective(1);
+  //   // Stop any active countdowns and game music before showing credits
+  // try { this.stopEscapeCountdown(); } catch (err) { void err; }
+  // try { this.stopAllGameAudio(); } catch (err) { void err; }
+  // // remove any interact sprite hint left behind
+  // try { this._removeEscapeHint(); } catch (err) { void err; }
+    
+  //   this.showEndCredits();
+  //   console.log('[Level3] Exit reached – rolling credits (countdown/music stopped)');
+  // }
+
+  async onLevel3ExitReached() {
     // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
     this.completeObjective(1);
     // Stop any active countdowns and game music before showing credits
-  try { this.stopEscapeCountdown(); } catch (err) { void err; }
-  try { this.stopAllGameAudio(); } catch (err) { void err; }
-  // remove any interact sprite hint left behind
-  try { this._removeEscapeHint(); } catch (err) { void err; }
+    try { this.stopEscapeCountdown(); } catch (err) { void err; }
+    try { this.stopAllGameAudio(); } catch (err) { void err; }
+    // remove any interact sprite hint left behind
+    try { this._removeEscapeHint(); } catch (err) { void err; }
+
+    // Wait for the cutscene to finish before rolling credits
+    try { await this.playEndcutscene(); } catch (err) { void err; }
+
     this.showEndCredits();
     console.log('[Level3] Exit reached – rolling credits (countdown/music stopped)');
   }
