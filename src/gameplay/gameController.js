@@ -106,6 +106,11 @@ export class GameController {
     // End the level when level3 exit is triggered
     window.addEventListener('level3:exit', () => {
       //GATE THE EXIT BY ZIP WIN
+      if (!this._zipCompleted) {
+        this.hud?.showMessage?.('Exit locked. Find the arcade machine first.', 1800);
+        return;
+      }
+
       this.onLevel3ExitReached();
     });
 
@@ -118,6 +123,12 @@ export class GameController {
 
     // Exit door (level 3)
     if (object.userData?.interactionType === 'exit') {
+      // Gate by Zip completion
+      if (!this._zipCompleted) {
+        this.hud?.showMessage?.('Exit locked. Find the arcade machine first.', 1800);
+        return;
+      }
+
       // allow both: main calling handleInteraction, or node.userData.onInteract hitting the event
       this.onLevel3ExitReached();
       return;
@@ -618,6 +629,68 @@ stopRoomFlashing() {
     }
   }
 
+
+
+// Add a helper to toggle the exit interactable on/off
+  setExitInteractable(enabled) {
+    try {
+      const normalize = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const targetNorm = normalize('Object_2011');
+      let exitObj = null;
+
+      try { exitObj = this.scene.getObjectByName && this.scene.getObjectByName('Object_2011'); } catch (e) { void e; }
+      if (!exitObj) {
+        this.scene.traverse((child) => {
+          if (exitObj || !child || !child.name) return;
+          try {
+            const n = normalize(child.name);
+            if (n === targetNorm || n.includes(targetNorm) || targetNorm.includes(n)) exitObj = child;
+          } catch (e) { void e; }
+        });
+      }
+
+      if (!exitObj) {
+        console.warn('[Exit] Exit object (Object_2011) not found.');
+        return;
+      }
+
+      // Apply gating
+      exitObj.userData.interactable = !!enabled;
+      if (enabled) {
+        exitObj.userData.requiredKey = 'E';
+        exitObj.userData.interactionType = 'exit';
+        exitObj.userData.getInteractLabel = function () { return 'Press E to Escape'; };
+      } else {
+        // Keep/clear marker to avoid accidental triggers
+        exitObj.userData.requiredKey = 'E';
+        exitObj.userData.interactionType = 'exit';
+        exitObj.userData.getInteractLabel = function () { return 'Locked'; };
+        // Remove any floating hints
+        try {
+          if (exitObj.userData.interactSprite && exitObj.userData.interactSprite.parent) {
+            exitObj.userData.interactSprite.parent.remove(exitObj.userData.interactSprite);
+          }
+          exitObj.userData.interactSprite = null;
+        } catch (e) { void e; }
+      }
+
+      // Refresh global interactables (whichever is available)
+      try { if (window.updateInteractableCache) window.updateInteractableCache(); else if (window.refreshInteractableCache) window.refreshInteractableCache(); } catch (e) { void e; }
+      // Ensure it is in/out of cache list
+      try {
+        if (window.cachedInteractables && Array.isArray(window.cachedInteractables)) {
+          const i = window.cachedInteractables.indexOf(exitObj);
+          if (enabled && i === -1) window.cachedInteractables.push(exitObj);
+          if (!enabled && i !== -1) window.cachedInteractables.splice(i, 1);
+        }
+      } catch (e) { void e; }
+    } catch (err) { console.warn('[Exit] setExitInteractable failed', err); }
+  }
+
+
+
+
+
   // Open a simple lightweight Zip-like mini-game overlay
   openZipMiniGame() {
     // Prevent opening multiple times
@@ -674,6 +747,7 @@ stopRoomFlashing() {
           try { this.startEscapeCountdown(70, "You didnt escape in time"); } catch (err) { console.warn('[Zip] startEscapeCountdown failed', err); }
 
           // Make the escape door/object interactable so player can press E to escape
+          try { this.setExitInteractable(true); } catch (err) { console.warn('[Zip] enabling exit failed', err); }
           try {
             // loose name normalizer: lowercase and strip non-alphanumeric for robust matching
             const normalize = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -937,6 +1011,9 @@ stopRoomFlashing() {
       try { this.hud.updateObjectivesDisplay(); } catch (err) { console.warn('[GameController] updateObjectivesDisplay failed', err); }
     }
     console.log('[Objectives] Level 3 objectives initialized: Find the Arcade machine');
+    // Ensure exit is locked at level start
+    try { this.setExitInteractable(false); } catch (e) { void e; }
+
   }
 
   // Initialize level 2 specific objectives
