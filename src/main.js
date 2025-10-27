@@ -719,8 +719,17 @@ function initializeGame(lights) {
           '/models/assets/logs/office2_Log3.png'
         ],
         caption: 'Office 2 Log'
+      },
+
+      'log':{
+        images: ['/models/assets/logs/revealAll1.png',
+          '/models/assets/logs/revealAll2.png',
+          '/models/assets/logs/revealAll3.png',
+          '/models/assets/logs/revealAll4.png',
+          '/models/assets/logs/revealAll5.png'
+        ],
+        caption: 'Log'
       }
-      // add more mappings as needed
     };
 
     // Preload images
@@ -1612,7 +1621,7 @@ function checkForInteractables() {
     const isDoor = target.userData.interactionType === "door";
     const isExit = target.userData.interactionType === "exit";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
-    const isLog = target.name.includes("Log") && target.userData.interactionType === "log";
+    const isLog = target.userData.interactionType === "log";
     
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
