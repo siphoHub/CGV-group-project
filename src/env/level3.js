@@ -17,6 +17,7 @@ export default async function loadLevel3(scene) {
       const colliders = [];
       const rayTargets = [];
       const mapMeshes = [];
+      let logMesh = null;
 
       lab.traverse((child) => {
         if (child.isMesh) {
@@ -58,6 +59,21 @@ export default async function loadLevel3(scene) {
               child.userData.isMapPickup = true;
               mapMeshes.push(child);
               console.log(`[Level3] Marked ${child.name} as mapL3`);
+            }
+
+            //mark log as interactable
+            if (child.name === 'log'){
+              child.userData.interactable = true;
+              child.userData.interactionType = 'log';
+              child.userData.getInteractLabel = () => 'Press E to read log';
+          child.userData.logId = child.name;
+          logMesh = child;
+          // ensure ray-targetable
+          if (!rayTargets.includes(child)) rayTargets.push(child);
+          console.log(`[Level3] Marked ${child.name} as logL3`);
+        
+
+
             }
           }
         }
@@ -115,6 +131,35 @@ export default async function loadLevel3(scene) {
       }
 
       scene.add(lab);
+
+    // Place the log beside the map (if both exist)
+    try {
+      const mapMesh = mapMeshes[0];
+      if (mapMesh && logMesh) {
+        // Offset in map local space
+        const localOffset = new THREE.Vector3(-200.0, 0.1, 50.0);
+        const targetWorld = mapMesh.localToWorld(localOffset.clone());
+        // Convert to log parent local space
+        const parent = logMesh.parent || lab;
+        const targetLocal = targetWorld.clone();
+        parent.worldToLocal(targetLocal);
+        logMesh.position.copy(targetLocal);
+        // Optional: keep log above floor
+        // logMesh.position.y = Math.max(logMesh.position.y, 0.05);
+        console.log('[Level3] Placed log next to map at', targetLocal.toArray().map(n=>n.toFixed(2)).join(', '));
+      } else {
+        if (!mapMesh) console.warn('[Level3] Map mesh not found; cannot place log beside it.');
+        if (!logMesh) console.warn('[Level3] Log mesh not found; cannot place it by map.');
+      }
+      // Refresh interactable cache if available
+      if (typeof window.updateInteractableCache === 'function') window.updateInteractableCache();
+    } catch (e) {
+      console.warn('[Level3] Failed to place log by map', e);
+    }
+
+
+      
+    
 
       if (typeof window !== 'undefined') {
         const bounds = new THREE.Box3().setFromObject(lab);
