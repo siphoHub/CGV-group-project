@@ -137,7 +137,7 @@ export default async function loadLevel3(scene) {
       const mapMesh = mapMeshes[0];
       if (mapMesh && logMesh) {
         // Offset in map local space
-        const localOffset = new THREE.Vector3(-200.0, 0.1, 50.0);
+        const localOffset = new THREE.Vector3(-310.0, 0.1, -40.0);
         const targetWorld = mapMesh.localToWorld(localOffset.clone());
         // Convert to log parent local space
         const parent = logMesh.parent || lab;
