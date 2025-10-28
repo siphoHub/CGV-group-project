@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel, getCurrentLevel } from "./core/levelLoader.js";
+import { loadLevel, isLevelTransitioning, transitionToLevel, getCurrentLevel, showLoadingOverlay, hideLoadingOverlay } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
@@ -109,41 +109,52 @@ window.addEventListener('keycard:used', async (e) => {
 
   const l23 = new cutscene23('/models/assets/cutscene23.png');
 
+  let level3TransitionPromise = null;
+  let level3TransitionResolved = false;
+
   l23.play( 
     async () => {
-      //cutscene finished. now show loading screen and transition
-
-      // Use the level loader to show the custom message and load target
-  // We rely on loadLevel to accept side-effects; show loading screen first
-  const loadingEl = document.getElementById('loading-screen');
-  if (loadingEl) {
-    // Update message if loading screen already exists
-    const p = loadingEl.querySelector('.loading-content p');
-    if (p) p.textContent = message;
-    loadingEl.style.display = 'flex';
-  } else {
-    // Create a simple loading screen if none exists
-    const ls = document.createElement('div');
-    ls.id = 'loading-screen';
-    ls.innerHTML = `<div class="loading-content"><h2>LOADING...</h2><div class="loading-spinner"></div><p>${message}</p></div>`;
-    ls.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.9);z-index:10000;color:white;font-family:monospace;';
-    document.body.appendChild(ls);
-  }
-
-  try {
-    const success = await transitionToLevel(target, scene, gameController, camera, message);
-    if (success) {
-      console.log('[main] Transition to', target, 'complete');
-    } else {
-      console.warn('[main] Transition to', target, 'failed');
-    }
-  } catch (err) {
-    console.error('[main] Error during keycard transition:', err);
-  }finally {
-      _cutscene23Playing = false;
-    }
-
-
+      let overlayShown = false;
+      try {
+        if (!level3TransitionPromise) {
+          level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
+            message,
+            showLoadingScreen: false
+          });
+          level3TransitionPromise.finally(() => {
+            level3TransitionResolved = true;
+          });
+        }
+        if (!level3TransitionResolved) {
+          showLoadingOverlay(message);
+          overlayShown = true;
+        }
+        const success = await level3TransitionPromise;
+        if (success) {
+          console.log('[main] Transition to', target, 'complete');
+        } else {
+          console.warn('[main] Transition to', target, 'failed');
+        }
+      } catch (err) {
+        console.error('[main] Error during keycard transition:', err);
+      } finally {
+        if (overlayShown) {
+          hideLoadingOverlay();
+        }
+        _cutscene23Playing = false;
+      }
+    },
+    () => {
+      if (!level3TransitionPromise) {
+        level3TransitionResolved = false;
+        level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
+          message,
+          showLoadingScreen: false
+        });
+        level3TransitionPromise.finally(() => {
+          level3TransitionResolved = true;
+        });
+      }
     }
   );
 
@@ -1150,23 +1161,52 @@ function initializeGame(lights) {
 
           //play elevator cutscene and load level 2 in background
           const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          let level2TransitionPromise = null;
+          let level2TransitionResolved = false;
           elevatorCutscene.play(
-            () => {
+            async () => {
               console.log('[Elevator] Cutscene finished — progressing to Level 2...');
-
-
               console.log('[Elevator] Taking elevator to Level 2...');
-                progressToLevel2(scene, gameController, camera).then(success => {
-                window._elevatorCutscenePlaying = false;
-
+              let overlayShown = false;
+              try {
+                if (!level2TransitionPromise) {
+                  level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
+                    message: 'Entering Level 2...',
+                    showLoadingScreen: false
+                  });
+                  level2TransitionPromise.finally(() => {
+                    level2TransitionResolved = true;
+                  });
+                }
+                if (!level2TransitionResolved) {
+                  showLoadingOverlay('Entering Level 2...');
+                  overlayShown = true;
+                }
+                const success = await level2TransitionPromise;
                 if (success) {
                   console.log("[Elevator] Successfully progressed to Level 2");
-                };
-              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+                } else {
+                  console.warn('[Elevator] Transition to Level 2 reported failure');
+                }
+              } catch (err) {
+                console.error('[Elevator] Error transitioning to Level 2:', err);
+              } finally {
+                if (overlayShown) {
+                  hideLoadingOverlay();
+                }
+                window._elevatorCutscenePlaying = false;
+              }
             },
             () => {
-              if (typeof loadLevelInBackground === 'function') {
-                loadLevelInBackground();
+              if (!level2TransitionPromise) {
+                level2TransitionResolved = false;
+                level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
+                  message: 'Entering Level 2...',
+                  showLoadingScreen: false
+                });
+                level2TransitionPromise.finally(() => {
+                  level2TransitionResolved = true;
+                });
               }
             }
 
