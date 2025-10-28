@@ -1,0 +1,38 @@
+.
+├── README.md
+├── eslint.config.js
+├── index.html
+├── package-lock.json
+├── package.json
+├── public
+│   └── models
+│       ├── assets
+│       │   ├── FlashlightIcon.jpg
+│       │   ├── FlashlightSwitch.mp3
+│       │   ├── GeneratorTurnedOn.mp3
+│       │   ├── ItemPickupSound.mp3
+│       │   ├── ObjectivesPage.png
+│       │   ├── ScaryScream.mp3
+│       │   └── scary-horror-music-351315.mp3
+│       └── blenderLevel1.glb
+├── src
+│   ├── controls
+│   │   └── controls.js
+│   ├── core
+│   │   ├── app.js
+│   │   ├── camera.js
+│   │   └── levelLoader.js
+│   ├── env
+│   │   └── level1.js
+│   ├── gameplay
+│   │   ├── cutscene.js
+│   │   ├── gameController.js
+│   │   └── hud.js
+│   ├── lighting
+│   │   └── level1.js
+│   └── main.js
+├── structure1.txt
+├── structure2.txt
+└── vite.config.js
+
+10 directories, 26 files
