@@ -258,9 +258,8 @@ export default async function loadLevel3(scene) {
         node.updateWorldMatrix(true, false);
         node.userData.hinged = true;
 
-        // Always add a small axes helper so we can visually confirm the pivot in-game
+        // Optionally add a bounding box helper for debugging to visualize the pivot
         try {
-          pivot.add(new THREE.AxesHelper(0.5));
           if (debug) {
             const box = new THREE.Box3().setFromObject(node);
             const helper = new THREE.Box3Helper(box, 0xff0000);

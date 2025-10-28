@@ -16,7 +16,7 @@ export function isLevelTransitioning() {
 }
 
 export function loadLevel(levelName, scene) {
-  //levelName = "level3" //remove
+  levelName = "level3" //remove
   switch (levelName) {
     case "level1":
       return loadLevel1(scene);

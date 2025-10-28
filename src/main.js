@@ -16,16 +16,6 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
     addDoorAtCrosshair();
   } 
-  
-  // L key for level progression
-  if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
-    // Immediately transition to Level 3 (blenderL3) when L is pressed
-    transitionToLevel('level3', scene, gameController, camera, 'Entering the experiment testing room')
-      .then(success => {
-        if (success) console.log('[Main] Successfully progressed to Level 3');
-        else console.warn('[Main] Failed to progress to Level 3');
-      });
-  }
 });
 
 // --- Renderer ---

@@ -10,11 +10,12 @@ const CREDIT_TEXT = `CREDITS
 Mutation Detective
 
 Group members
-• Lauren
-• Kaylee
-• Adrusha
-• Colby
-• Sipho
+Sipho Jr. Mntambo 2430285 
+Adrusha Reddy 2667194 
+Lauren Lachman 2702445 
+Aluwani Nndwamato 2671832 
+Colby Subramoney 2604668 
+Kaylee Bibis 2538031
 
 Background imagery
 • Level 1 to 2 cutscene: "Eerie Abandoned Elevator" photo by Stockcake - https://stockcake.com/i/eerie-abandoned-elevator_1179472_95384
