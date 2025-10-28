@@ -33,9 +33,7 @@ export class cutscene23{
         }, 3000);
 
         if (levelLoadCallback) {
-            setTimeout(() => {
-                levelLoadCallback();
-            }, 3500); //start loading level 3 after 3.5 seconds
+            setTimeout(() => levelLoadCallback(), 100);
         }
 
         this.skipTimeout = setTimeout(() => {

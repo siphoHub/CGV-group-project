@@ -17,6 +17,7 @@ export default async function loadLevel3(scene) {
       const colliders = [];
       const rayTargets = [];
       const mapMeshes = [];
+      let logMesh = null;
 
       lab.traverse((child) => {
         if (child.isMesh) {
@@ -58,6 +59,21 @@ export default async function loadLevel3(scene) {
               child.userData.isMapPickup = true;
               mapMeshes.push(child);
               console.log(`[Level3] Marked ${child.name} as mapL3`);
+            }
+
+            //mark log as interactable
+            if (child.name === 'log'){
+              child.userData.interactable = true;
+              child.userData.interactionType = 'log';
+              child.userData.getInteractLabel = () => 'Press E to read log';
+          child.userData.logId = child.name;
+          logMesh = child;
+          // ensure ray-targetable
+          if (!rayTargets.includes(child)) rayTargets.push(child);
+          console.log(`[Level3] Marked ${child.name} as logL3`);
+        
+
+
             }
           }
         }
@@ -115,6 +131,35 @@ export default async function loadLevel3(scene) {
       }
 
       scene.add(lab);
+
+    // Place the log beside the map (if both exist)
+    try {
+      const mapMesh = mapMeshes[0];
+      if (mapMesh && logMesh) {
+        // Offset in map local space
+        const localOffset = new THREE.Vector3(-310.0, 0.1, -40.0);
+        const targetWorld = mapMesh.localToWorld(localOffset.clone());
+        // Convert to log parent local space
+        const parent = logMesh.parent || lab;
+        const targetLocal = targetWorld.clone();
+        parent.worldToLocal(targetLocal);
+        logMesh.position.copy(targetLocal);
+        // Optional: keep log above floor
+        // logMesh.position.y = Math.max(logMesh.position.y, 0.05);
+        console.log('[Level3] Placed log next to map at', targetLocal.toArray().map(n=>n.toFixed(2)).join(', '));
+      } else {
+        if (!mapMesh) console.warn('[Level3] Map mesh not found; cannot place log beside it.');
+        if (!logMesh) console.warn('[Level3] Log mesh not found; cannot place it by map.');
+      }
+      // Refresh interactable cache if available
+      if (typeof window.updateInteractableCache === 'function') window.updateInteractableCache();
+    } catch (e) {
+      console.warn('[Level3] Failed to place log by map', e);
+    }
+
+
+      
+    
 
       if (typeof window !== 'undefined') {
         const bounds = new THREE.Box3().setFromObject(lab);
@@ -213,9 +258,8 @@ export default async function loadLevel3(scene) {
         node.updateWorldMatrix(true, false);
         node.userData.hinged = true;
 
-        // Always add a small axes helper so we can visually confirm the pivot in-game
+        // Optionally add a bounding box helper for debugging to visualize the pivot
         try {
-          pivot.add(new THREE.AxesHelper(0.5));
           if (debug) {
             const box = new THREE.Box3().setFromObject(node);
             const helper = new THREE.Box3Helper(box, 0xff0000);
@@ -281,13 +325,70 @@ export default async function loadLevel3(scene) {
         }
         open(){ this.target = this.openAngle; }
         close(){ this.target = 0; }
-        toggle(){ this.target = (Math.abs(this.target) > 1e-3) ? 0 : this.openAngle; }
+        toggle(){
+          // determine whether this action will open the door (target currently closed)
+          const willOpen = Math.abs(this.target) < 1e-3;
+          this.target = willOpen ? this.openAngle : 0;
+          // special-case: when J_2b17 opens, trigger cube movement + rat squeaks
+          try {
+            if (willOpen && this.mesh && this.mesh.name === 'J_2b17') {
+              try { triggerJ2b17Effects(); } catch (err) { console.warn('[HingedDoor] triggerJ2b17Effects failed', err); }
+            }
+          } catch (err) { void err; }
+        }
         update(dt){
           const next = THREE.MathUtils.damp(this.current, this.target, this.speed, dt);
           const delta = next - this.current;
           this.current = next;
           this.pivot.rotateOnAxis(new THREE.Vector3(0,1,0), delta);
         }
+      }
+
+      // Helper: animate a local translation on an object over duration (ms)
+      function animateTranslateX(object, deltaX, duration = 3000) {
+        if (!object) return null;
+        const startTime = performance.now();
+        const fromX = object.position.x;
+        const toX = fromX + deltaX;
+        let raf = null;
+        const step = (ts) => {
+          const t = Math.min(1, (ts - startTime) / duration);
+          object.position.x = fromX + (toX - fromX) * t;
+          if (t < 1) raf = requestAnimationFrame(step);
+        };
+        raf = requestAnimationFrame(step);
+        return () => { if (raf) cancelAnimationFrame(raf); };
+      }
+
+      // Trigger special effects when J_2b17 is opened: move two cubes and play rat squeaks
+      function triggerJ2b17Effects() {
+        try {
+          const names = ['Cube017', 'Cube017_1'];
+          for (const n of names) {
+            let node = lab.getObjectByName(n) || null;
+            if (!node) {
+              // loose fallback
+              lab.traverse(o => { if (!node && o.name && o.name.toLowerCase() === n.toLowerCase()) node = o; });
+            }
+            if (node) {
+              // move -20m in X over 3s
+              try { animateTranslateX(node, -20, 3000); } catch (err) { console.warn('[level3] animateTranslateX failed for', n, err); }
+            } else {
+              console.warn('[level3] could not find', n, 'to move');
+            }
+          }
+
+          // Play rat squeaks audio (non-positional)
+          try {
+            const rat = new Audio('/models/assets/rat squeaks.mp3');
+            rat.volume = 0.85;
+            rat.play().catch(() => {
+              // resume on next user gesture if autoplay blocked
+              const resume = () => { rat.play().catch(() => {}); document.removeEventListener('click', resume); };
+              document.addEventListener('click', resume);
+            });
+          } catch (err) { console.warn('[level3] failed to play rat squeaks', err); }
+        } catch (err) { console.warn('[level3] triggerJ2b17Effects failed', err); }
       }
 
       // --- EXIT DOOR WIRING -------------------------------------------------------

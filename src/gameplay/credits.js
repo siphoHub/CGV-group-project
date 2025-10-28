@@ -1,6 +1,7 @@
 // ====== Mutant/Facility Themed End Credits ======
 const CREDIT_SCROLL_DURATION_MS = 18000;
 const DEFAULT_AUTO_CLOSE_MS = CREDIT_SCROLL_DURATION_MS + 2000;
+const AUTO_SCROLL_SPEED_PX_PER_SEC = 40;
 
 let creditsStyleInjected = false;
 
@@ -9,16 +10,95 @@ const CREDIT_TEXT = `CREDITS
 Mutation Detective
 
 Group members
-• Lauren
-• Kaylee
-• Adrusha
-• Colby
-• Sipho
+Sipho Jr. Mntambo 2430285 
+Adrusha Reddy 2667194 
+Lauren Lachman 2702445 
+Aluwani Nndwamato 2671832 
+Colby Subramoney 2604668 
+Kaylee Bibis 2538031
+
+Background imagery
+• Level 1 to 2 cutscene: "Eerie Abandoned Elevator" photo by Stockcake - https://stockcake.com/i/eerie-abandoned-elevator_1179472_95384
+• Level 2 to 3 cutscene: Generated with ChatGPT
+
+Sounds & music
+• Monster bellowing - Thanra - https://freesound.org/s/245429/
+• Scary monster roar #2 - NicknameLarry - https://freesound.org/s/489901/
+• Heavy breathing scared male - DeqstersLab - https://freesound.org/s/721351/
+• Metallic clatter - Porphyr - https://freesound.org/s/192067/
+• Creepy old elevator 2 - bassboybg - https://freesound.org/s/218928/
+• Background ambience - Pixabay freesound_community - https://pixabay.com/users/freesound_community-46691455/
+
+Videos
+• In-engine capture by CGV team
+
+Models
+• Rats - Lauren
+• Specimen tank base - Lauren
+• Pipes on wall - Lauren
+• Creature Specimen Jar - Michael V (Sketchfab Free) - https://skfb.ly/prFLr
+• Dead Body - Lukas Bobor (CC Attribution) - https://skfb.ly/RDwI
+• Exit Door - barbodoji (CC Attribution) - https://skfb.ly/pupIB
+• Low poly dead body covered - Arthur.Zim (CC Attribution) - https://skfb.ly/ooOXt
+• Blood Spattered - adolfochs (CC Attribution) - https://skfb.ly/oIZUR
+• Broken glass - mkelly2024 (CC Attribution) - https://skfb.ly/oAZIy
+• Cheap old shelf - Blender3D (CC Attribution) - https://skfb.ly/6zs9z
+• Blood splatter - Robin.Mikalsen (CC Attribution) - https://skfb.ly/owsuS
+• 18650 Li-Ion battery - Stepan Sallinen (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/a0c98938-0da6-4288-82a3-5cf1a692d21c/
+• AAA battery - Models by sherhn (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/4fc3e36f-de98-4fb0-94cd-0945bd659db0/
+• Among Us dead body - DI BY (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/3810e6de-ab20-4635-aeb5-92501219ef63/
+• Human skull bone - Mojo (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/b938c1b2-ad1c-4dd3-ab67-a59d42cb0777/
+• Broken flower pot - Jophet Mark (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/10e6d670-55f0-44d1-9917-28f78ff50ea8/
+• Corsair keyboard - Matt Pontacole (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/828e6aa8-a3ad-4fec-bb5d-47fdd7f84831/
+• Dog skeleton - LeviEntity Pierre (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/0067c3e4-14bd-4b29-851b-2c6da4cbdfc4/
+• Flashlight camping - Klo Works (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/ab51bb9b-6747-48eb-a011-e3c73022e847/
+• Generator - Davydas Alytas (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/5be80ae6-2ad3-4f3a-8780-90d9b71fb5d7/
+• Industrial elevator doors (3D scanned) - Nobody (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/9f9033b9-1627-4e79-aeda-6ade4249942e/
+• Reception desk - Salyh Babaev (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/4c19f984-3f80-4aa6-be41-5265dabc526a/
+• Antique jewelry box - Ed Ackerman (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/89fe8372-4709-4168-8451-55ec9f70d7d2/
+• Barrel 01 - Poly Haven (CC0) - https://www.blenderkit.com/asset-gallery-detail/bf1be93e-27d3-49c3-9c17-47891dab1bbf/
+• Blue metal door - Freepoly (CC0) - https://www.blenderkit.com/asset-gallery-detail/7203198b-765c-4609-a666-a8550760238f/
+• Green metal door - Freepoly (CC0) - https://www.blenderkit.com/asset-gallery-detail/a8af9102-614f-4a89-8390-fd35ffe4d500/
+• Dirty blanket - Alexander Handjiev (CC0) - https://www.blenderkit.com/asset-gallery-detail/8c91156c-23c5-4087-b37e-bfb9af41ad94/
+• Stair light - Jesus Snz (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/14109209-b0e7-461e-a088-e0ab0ea026bd/
+• Hanging industrial lamp - Poly Haven (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/4a8af280-5806-45f6-9b09-afaa925c1fad/
+• Medi-trolly - Yahku le Roux (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/b72d5b00-9cb6-405e-8c0f-582f7aa483f8/
+• Old computer 02 - Freepoly (CC0) - https://www.blenderkit.com/asset-gallery-detail/73429166-ad82-4209-a4e5-079edcf80d21/
+• Old crate - Klo Works (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/e68b326b-af1c-4b9e-b5a3-ba549c3cd04f/
+• Old office desk - Freepoly (CC0) - https://www.blenderkit.com/asset-gallery-detail/7b5a53df-21c4-48c5-97e7-3e7a8f6062a0/
+• Pirate wooden box - Stray Designer (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/e0ff1d2b-a166-4bfd-a2e5-fb3e38142c9e/
+• Rust cabinet - Freepoly (CC0) - https://www.blenderkit.com/asset-gallery-detail/0caa07f9-ec69-4561-b1a7-a2b78fc79d2f/
+• Sheet of pills 2 - Dovydas Alytas (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/b807857b-99b1-43df-98c9-2fb2ab00ead1/
+• Whiteboard - Rex Hans (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/a1996f29-d7fe-44a6-8949-3d34ca15a089/
+• Security camera 02 - Poly Haven (CC0) - https://www.blenderkit.com/asset-gallery-detail/b06e1272-8b7d-47fb-a603-3bf770fd815c/
+• Sign - No Smoking - Nobody (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/d1b0c94b-2fe3-4f20-83b0-14ef77c0bb05/
+• Rollerball pen - ibotpl (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/981f426a-18e8-4732-a8dd-141f2acde7a6/
+• Green serum - Aditya C (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/a790f4de-3c18-41b8-9fad-254167885815/
+• Knife - Rex Hans (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/2f9b5a2b-907a-4779-b7e9-2ae5f79586c4/
+• Keypad - Spellkaze (CC Attribution) - https://skfb.ly/6FV6v
+• Security card - NoTimeForAdventure (CC Attribution) - https://skfb.ly/o8CEP
+• Science lab door (apocalyptic) - sgoldcreatives (CC Attribution) - https://skfb.ly/oBvwP
+• Hospital bed - Ioxfear (CC Attribution) - https://skfb.ly/F8IC
+• Door key - SusanKing (Sketchfab Free) - https://skfb.ly/6SNAw
+• Old newspaper - anaxarts designs (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/c1da5889-61c2-41fd-b997-f76448969c8f/
+
+Materials
+• Old red painted wall - ydd 3D (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/a0c98938-0da6-4288-82a3-5cf1a692d21c/
+• Broken tile - Steffen (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/d68e9a77-8c9a-46b9-8e68-a077b6bd1d93/
+• Broken tile white with cracks - Textures Can (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/1e111092-a033-416d-9190-f1d3c1949131/
+• PBR white & silver broken tiles - 3DAssets Kit (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/fc422d45-4b48-4a2a-87e6-2101eafe1f0a/
+• Puddles broken tiles - Textures Can (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/900a852d-fdf5-43aa-b938-25fd9c2440ff/
+• Small red tiles - ydd 3D (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/0e92c653-c68d-46fc-8d73-1562e4468e01/
+• Animal fur - ydd 3D (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/a339cd60-3dd5-43c5-a642-e08ff8dab158/
+• Metal old dark - James Middleton (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/5f12bed6-fb90-4e05-a81d-5a7789d87dd8/
+• Red crystal glass - ydd 3D (Royalty Free) - https://www.blenderkit.com/asset-gallery-detail/2f3dc00d-09c4-4af1-9044-3e1d80633b78/
 
 Tools
 • three.js
 • Blender
 • Vite
+• ESLint
+• Prettier
 
 Thanks for playing!`;
 
@@ -61,7 +141,7 @@ function buildCreditsContent(text) {
       h.textContent = line;
       root.appendChild(h);
       list = null;
-    } else if (/^(group members|tools|special thanks|Mutation Detective)$/i.test(line)) {
+    } else if (/^(group members|tools|special thanks|Mutation Detective|background imagery|sounds & music|videos|models|materials)$/i.test(line)) {
       const h = document.createElement("div");
       h.className = "cr-h1";
       h.textContent = line;
@@ -186,16 +266,34 @@ function ensureCreditsStyles() {
 
     /* scroll area */
     .credits-overlay__inner {
-      position: absolute; inset: 64px 0 64px 0;
-      display:grid; place-items:center;
+      position: absolute; inset: 64px 24px 64px 24px;
+      display:flex; justify-content:center; align-items:stretch;
       overflow:hidden;
     }
-    .credits-scroll {
+    .credits-scroll-container {
       width: min(720px, 86%);
+      max-height: 100%;
+      overflow-y: auto;
+      padding-right: 18px;
+      margin-right: -6px;
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148,255,236,.6) rgba(10,12,15,.6);
+    }
+    .credits-scroll-container::-webkit-scrollbar {
+      width: 8px;
+    }
+    .credits-scroll-container::-webkit-scrollbar-track {
+      background: rgba(10,12,15,.6);
+    }
+    .credits-scroll-container::-webkit-scrollbar-thumb {
+      background: rgba(148,255,236,.6);
+      border-radius: 12px;
+    }
+    .credits-scroll {
+      width: 100%;
       text-align:center;
       filter: drop-shadow(0 2px 0 rgba(0,0,0,.75));
-      animation: credits-roll ${CREDIT_SCROLL_DURATION_MS}ms linear forwards;
-      will-change: transform;
     }
 
     .cr-h0 {
@@ -305,8 +403,14 @@ export function showCreditsOverlay({
   // Scroll area
   const innerWrap = document.createElement("div");
   innerWrap.className = "credits-overlay__inner";
+  const scrollContainer = document.createElement("div");
+  scrollContainer.className = "credits-scroll-container";
+  scrollContainer.tabIndex = 0;
+  scrollContainer.setAttribute("role", "document");
+  scrollContainer.setAttribute("aria-label", "Credits content");
   const scrollContent = buildCreditsContent(CREDIT_TEXT);
-  innerWrap.appendChild(scrollContent);
+  scrollContainer.appendChild(scrollContent);
+  innerWrap.appendChild(scrollContainer);
 
   // Footer / Skip
   const footer = document.createElement("div");
@@ -329,16 +433,136 @@ export function showCreditsOverlay({
   return new Promise((resolve) => {
     let finished = false;
     let closeTimer = null;
+    let autoScrollRafId = null;
+    let resumeTimer = null;
+    let lastTimestamp = 0;
+    let autoScrollFinished = false;
+    let userInteracted = false;
+
+    const maxScrollAmount = () => Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+
+    const cancelAutoScroll = () => {
+      if (autoScrollRafId !== null) {
+        cancelAnimationFrame(autoScrollRafId);
+        autoScrollRafId = null;
+      }
+    };
+
+    const cancelResumeTimer = () => {
+      if (resumeTimer) {
+        window.clearTimeout(resumeTimer);
+        resumeTimer = null;
+      }
+    };
 
     const finalize = () => {
       if (finished) return;
       finished = true;
       if (closeTimer) window.clearTimeout(closeTimer);
+      cancelResumeTimer();
+      cancelAutoScroll();
       window.removeEventListener("keydown", handleKey);
+      scrollContainer.removeEventListener("scroll", handleScroll);
+      scrollContainer.removeEventListener("keydown", handleScrollKey);
+      interactionEvents.forEach((evt) => scrollContainer.removeEventListener(evt, markInteraction));
+      button.removeEventListener("click", finalize);
       if (overlay.parentElement) overlay.parentElement.removeChild(overlay);
       try { onClose?.(); } catch (err) { console.warn("[credits] onClose handler error:", err); }
       if (restartOnFinish) window.dispatchEvent(new Event("credits:restart"));
       resolve();
+    };
+
+    const handleAutoScrollComplete = () => {
+      if (autoScrollFinished || finished) return;
+      autoScrollFinished = true;
+      cancelResumeTimer();
+      cancelAutoScroll();
+      if (closeTimer) {
+        window.clearTimeout(closeTimer);
+        closeTimer = window.setTimeout(finalize, 3000);
+      } else if (autoCloseMs <= 0) {
+        closeTimer = window.setTimeout(finalize, 3000);
+      }
+    };
+
+    const autoScrollStep = (timestamp) => {
+      if (finished || autoScrollFinished) return;
+      const maxScroll = maxScrollAmount();
+      if (maxScroll <= 0) {
+        handleAutoScrollComplete();
+        return;
+      }
+      const delta = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+      const next = Math.min(
+        scrollContainer.scrollTop + (AUTO_SCROLL_SPEED_PX_PER_SEC * delta) / 1000,
+        maxScroll
+      );
+      scrollContainer.scrollTop = next;
+
+      if (scrollContainer.scrollTop >= maxScroll - 1) {
+        handleAutoScrollComplete();
+      } else {
+        autoScrollRafId = requestAnimationFrame(autoScrollStep);
+      }
+    };
+
+    const startAutoScroll = () => {
+      if (finished || autoScrollFinished) return;
+      const maxScroll = maxScrollAmount();
+      if (maxScroll <= 0) {
+        handleAutoScrollComplete();
+        return;
+      }
+      cancelAutoScroll();
+      autoScrollRafId = requestAnimationFrame((ts) => {
+        lastTimestamp = ts;
+        autoScrollRafId = requestAnimationFrame(autoScrollStep);
+      });
+    };
+
+    const scheduleAutoClose = () => {
+      if (finished) return;
+      if (autoCloseMs <= 0) return;
+      const maxScroll = maxScrollAmount();
+      const estimatedDuration = maxScroll > 0
+        ? (maxScroll / AUTO_SCROLL_SPEED_PX_PER_SEC) * 1000
+        : 0;
+      const delay = Math.max(autoCloseMs, estimatedDuration + 4000);
+      if (closeTimer) window.clearTimeout(closeTimer);
+      closeTimer = window.setTimeout(finalize, delay);
+    };
+
+    const queueResume = () => {
+      cancelResumeTimer();
+      if (autoScrollFinished) return;
+      resumeTimer = window.setTimeout(() => {
+        userInteracted = false;
+        startAutoScroll();
+      }, 2000);
+    };
+
+    const markInteraction = () => {
+      if (finished || autoScrollFinished) return;
+      userInteracted = true;
+      if (document.activeElement !== scrollContainer) {
+        scrollContainer.focus({ preventScroll: true });
+      }
+      cancelAutoScroll();
+      queueResume();
+    };
+
+    const handleScroll = () => {
+      if (finished || autoScrollFinished) return;
+      if (scrollContainer.scrollTop >= maxScrollAmount() - 1) {
+        handleAutoScrollComplete();
+      }
+    };
+
+    const handleScrollKey = (event) => {
+      if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"].includes(event.code)) {
+        markInteraction();
+      }
     };
 
     const handleKey = (event) => {
@@ -348,16 +572,21 @@ export function showCreditsOverlay({
       }
     };
 
-    // finish on scroll animation end
-    scrollContent.addEventListener("animationend", finalize, { once: true });
+    const interactionEvents = ["wheel", "touchstart", "mousedown"];
+
+    interactionEvents.forEach((evt) => scrollContainer.addEventListener(evt, markInteraction, { passive: true }));
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    scrollContainer.addEventListener("keydown", handleScrollKey);
     button.addEventListener("click", finalize);
     window.addEventListener("keydown", handleKey);
 
-    if (autoCloseMs > 0) {
-      closeTimer = window.setTimeout(finalize, autoCloseMs);
-    }
-
     document.body.appendChild(overlay);
     overlay.focus();
+
+    requestAnimationFrame(() => {
+      scrollContainer.focus({ preventScroll: true });
+      scheduleAutoClose();
+      if (!userInteracted) startAutoScroll();
+    });
   });
 }

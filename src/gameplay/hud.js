@@ -85,15 +85,18 @@ export class HUD {
             <div id="controls-section">
               <h3>CONTROLS</h3>
               <div class="control-list">
-                <div class="control-item"><span class="key">W A S D</span> - Move</div>
-                <div class="control-item"><span class="key">Mouse</span> - Look around</div>
-                <div class="control-item"><span class="key">E</span> - Interact</div>
-                <div class="control-item"><span class="key">F</span> - Toggle flashlight</div>
-                <div class="control-item"><span class="key">C</span> - Crouch</div>
-                <div class="control-item"><span class="key">M</span> - Toggle music</div>
-                <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
-              </div>
+              <div class="control-item"><span class="key">W A S D</span> - Move</div>
+              <div class="control-item"><span class="key">Shift</span> - Hold to sprint</div>
+              <div class="control-item"><span class="key">Mouse</span> - Look around</div>
+              <div class="control-item"><span class="key">E</span> - Interact</div>
+              <div class="control-item"><span class="key">F</span> - Toggle flashlight</div>
+              <div class="control-item"><span class="key">C</span> - Crouch</div>
+              <div class="control-item"><span class="key">M</span> - Toggle music</div>
+              <div class="control-item"><span class="key">P</span> - Pause/Resume game</div>
+              <div class="control-item"><span class="key">V</span> - Toggle coordinate HUD</div>
+              <div class="control-item"><span class="key">R</span> - Reset position</div>
             </div>
+          </div>
 
             <div id="pause-objectives-section">
               <h3>OBJECTIVES</h3>
@@ -548,7 +551,18 @@ export class HUD {
 
   // ---------------- Main loop ----------------
   _tick(now) {
+    // Guard to avoid huge dt accumulation when paused or when first run
+    if (!this._lastTS) this._lastTS = now;
     const dtMs = now - this._lastTS;                 // ms
+
+    // If the game is paused, do not consume battery or drain energy.
+    // Keep _lastTS updated so we don't get a large jump when resuming.
+    if (this.isPaused) {
+      this._lastTS = now;
+      requestAnimationFrame(this._tick);
+      return;
+    }
+
     this._lastTS = now;
 
     // discrete bars drain (only when flashlight ON)
@@ -626,7 +640,16 @@ export class HUD {
       this._barAccum = 0;
     }
 
+    // Also restore the smooth flashlight energy percentage proportionally
+    // Convert added bars to percent (each bar = 100 / maxBatteryLife percent)
+    if (actualAdd > 0) {
+      const percentPerBar = 100 / this.maxBatteryLife;
+      const energyAdd = actualAdd * percentPerBar;
+      this.flashlightEnergy = Math.min(100, (this.flashlightEnergy || 0) + energyAdd);
+    }
+
     this.updateBatteryDisplay();
+    this._updateFlashlightUI();
   }
 
   // --- Pause Menu Methods ---
@@ -814,6 +837,8 @@ export class HUD {
     }
   }
 
+  
+
   // game over battlety depleted
   onBatteryDepleted() {
     console.log('[HUD] Battery depleted - triggering game over');
@@ -821,7 +846,7 @@ export class HUD {
     window.dispatchEvent(new CustomEvent('battery:depleted'));
   }
 
-  showGameOverScreen() {
+  showGameOverScreen(message = 'Your flashlight died...') {
     // Check if game over screen already exists
     let gameOverScreen = document.getElementById('game-over-screen');
 
@@ -831,7 +856,7 @@ export class HUD {
       gameOverScreen.innerHTML = `
         <div id="game-over-content">
           <h1>GAME OVER</h1>
-          <p>Your flashlight died...</p>
+          <p id="game-over-message">${message}</p>
           <p class="game-over-subtitle">You couldn't survive in the darkness</p>
           <button id="restart-button" onclick="window.location.reload()">TRY AGAIN</button>
         </div>
@@ -926,6 +951,9 @@ export class HUD {
       document.head.appendChild(styles);
       document.body.appendChild(gameOverScreen);
     } else {
+      // update message if provided
+      const msgEl = gameOverScreen.querySelector('#game-over-message');
+      if (msgEl) msgEl.textContent = message;
       gameOverScreen.style.display = 'flex';
     }
   }

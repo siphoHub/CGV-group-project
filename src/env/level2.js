@@ -21,6 +21,16 @@ export default async function loadLevel2(scene) {
     // Enable shadows and optimize meshes
     facility.traverse((child) => {
       if (child.isMesh) {
+        if (child.name === 'map') {
+          child.visible = false;
+          if (child.userData) {
+            child.userData.interactable = false;
+            delete child.userData.interactionType;
+          }
+          console.log('[Level2] Disabled unused map mesh');
+          return;
+        }
+
         meshCount++;
         child.castShadow = true;
         child.receiveShadow = true;
@@ -111,12 +121,6 @@ export default async function loadLevel2(scene) {
           console.log(`[Level2] Found ${child.name} as keycard reader`);
         }
 
-        //mark level 2 map as interactable
-        if (child.name === 'map'){
-          child.userData.interactable = true;
-          child.userData.interactionType = 'map';
-          console.log(`[Level2] Marked ${child.name} as mapL2`);
-        }
         //logs for level 2
         if (child.name === 'testingRoom1_Log1' || child.name === 'testingRoom1_Log2' || child.name === 'testingRoom2_Log1' || child.name === 'testingRoom2_Log2' 
           || child.name === 'office2_Log2' || child.name === 'office1_Log1') {
@@ -225,7 +229,16 @@ export default async function loadLevel2(scene) {
       node.matrix.decompose(node.position, node.quaternion, node.scale);
       node.updateWorldMatrix(true, false);
       node.userData.hinged = true;
-      try { pivot.add(new THREE.AxesHelper(0.5)); if (debug) { const box = new THREE.Box3().setFromObject(node); const helper = new THREE.Box3Helper(box, 0xff0000); helper.userData.ignoreInteract = true; node.add(helper); } } catch(err) { console.warn('[level2] hinge helper debug add failed', err && err.message); }
+      try {
+        if (debug) {
+          const box = new THREE.Box3().setFromObject(node);
+          const helper = new THREE.Box3Helper(box, 0xff0000);
+          helper.userData.ignoreInteract = true;
+          node.add(helper);
+        }
+      } catch(err) {
+        console.warn('[level2] hinge helper debug add failed', err && err.message);
+      }
       return pivot;
     }
 

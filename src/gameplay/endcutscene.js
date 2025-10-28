@@ -1,6 +1,6 @@
 //cutscene between levels 1 and 2
 
-export class cutscene12{
+export class endcutscene{
 
     constructor(backgroundImage = null) {
         this.isPlaying = false;
@@ -9,10 +9,11 @@ export class cutscene12{
         this.skipTimeout = null;
         this.skipEnabled = false;
         this.skipPrompt = null; //space to skip
-        this.elevatorSound = null;
-        this.growlSound = null;
-        this.growlTimeout = null;
+        this.fireSound = null;
+        this.endSound = null;
+        this.fireTimeout = null;
         this.backgroundImage = backgroundImage;
+        this.onFireEnded = null;
     }
 
 
@@ -32,8 +33,9 @@ export class cutscene12{
         }, 3000);
 
         if (levelLoadCallback) {
-            // kick off next level loading almost immediately so it can finish during the cutscene
-            setTimeout(() => levelLoadCallback(), 100);
+            setTimeout(() => {
+                levelLoadCallback();
+            }, 3500); //start loading level 2 after 3.5 seconds
         }
 
         this.skipTimeout = setTimeout(() => {
@@ -45,7 +47,7 @@ export class cutscene12{
 
     createCutsceneElements(){
         this.cutsceneContainer = document.createElement("div");
-        this.cutsceneContainer.id = 'cutscene-12';
+        this.cutsceneContainer.id = 'endcutscene';
 
         if (this.backgroundImage) {
             this.cutsceneContainer.style.backgroundImage = `url(${this.backgroundImage})`;
@@ -54,28 +56,19 @@ export class cutscene12{
         }
 
         this.cutsceneContainer.innerHTML = `
-            <div id="cutscene12-content">
+            <div id="endcutscene-content">
 
-                <div id="elevator">
-                    <p>That's strange. The elevator still works.</p>
-                </div>
+                <div id="intro"> It's gone...all of it </div>
 
-                <div id="thought">
-                    <p>Looks like the power is still on in some parts of the facility...</p>
-                </div>
+                <div id="did">Everything they built, everything they did...</div>
 
-                <div id="thought2">
-                    <p>But why keep it on if no one is here?</p>
-                </div>
+                <div id="wiped">Wiped away in an instant.</div>
+                
+                <div id="free">I should feel free.</div>
 
-                <div id="thought3">
-                    <p>Maybe they were expecting someone to come back. Or they are containing something...</p>
-                </div>
-
-                <div id="noise">
-                    <p>Something is down there. Whatever they were doing here, it's still alive.</p>
-                </div>
-
+                <div id="but">But all I can think about is what it cost to get here...</div>
+                
+               
 
                 <div id="skip-prompt" style="display: none;">
                     Press <span class="skip-key">SPACE</span> to skip
@@ -95,7 +88,7 @@ export class cutscene12{
     styles.id = 'cutscene-styles';
     styles.textContent = `
       /* Fullscreen cutscene container */
-      #cutscene-12 {
+      #endcutscene {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
         background: #000;
@@ -109,7 +102,7 @@ export class cutscene12{
       }
 
       /* Main content wrapper */
-      #cutscene12-content {
+      #endcutscene-content {
         max-width: 800px;
         text-align: center;
         line-height: 1.6;
@@ -118,7 +111,7 @@ export class cutscene12{
       }
 
       /* Each dialogue block fades in and out sequentially */
-      #cutscene12-content > div {
+      #endcutscene-content > div {
         opacity: 0;
         transition: opacity 0.5s ease-in-out;
       }
@@ -179,67 +172,89 @@ export class cutscene12{
 
 
     startAnimations() {
-        //Start elevator background sound immediately
-        this.playElevatorSound();
+        this.playBackgroundSound({ startQuiet: true });
+        this.playFireSound();
 
-        const lines = [
-            'elevator',
-            'thought',
-            'thought2',
-            'thought3'
+        const dialogues = [
+            { id: 'intro', delay: 2000 },
+            {id: 'did', delay: 7000 },
+            { id: 'wiped', delay: 12000 },
+            { id: 'free', delay: 17000 },
+            { id: 'but', delay: 23000 },
         ];
 
-         // Show first 4 lines sequentially
-          lines.forEach((id, index) => {
-            const el = document.getElementById(id);
+        dialogues.forEach((dialogue, index) => {
+            const el = document.getElementById(dialogue.id);
             setTimeout(() => { el.style.opacity = 1; }, index * 3500);
             setTimeout(() => { el.style.opacity = 0; }, (index + 1) * 3500);
         });
 
-            const growlDuration = 3500;
-            this.growlTimeout = setTimeout(() => { 
-                
-                this.playGrowlSound();
 
-
-                setTimeout(() => {
-            const lastLine = document.getElementById('noise');
-            lastLine.style.opacity = 1;
-
-                setTimeout(() => { lastLine.style.opacity = 0; }, 3500);
-            }, growlDuration);
-
-
-                this.growlTimeout = null;
-            }, 4*3500); //play growl as last line on dialogue
-        }
-
-    // --- Sound helper functions ---
-    playElevatorSound() {
-        this.elevatorSound = new Audio("models/assets/elevator_loop.wav");
-        this.elevatorSound.loop = true;
-        this.elevatorSound.volume = 0.4; // subtle hum
-        this.elevatorSound.play().catch(() => {});
     }
 
-    playGrowlSound() {
-        this.growlSound = new Audio("models/assets/elevator_growl.wav");
-        this.growlSound.volume = 0.7; // scary, more prominent
-        this.growlSound.play().catch(() => {});
+    // Small helper to fade volume smoothly
+    _fadeVolume(audio, from, to, durationMs = 800) {
+        if (!audio) return;
+        const steps = 24;
+        const stepTime = Math.max(16, Math.floor(durationMs / steps));
+        let current = 0;
+        audio.volume = from;
+        const delta = (to - from) / steps;
+        const id = setInterval(() => {
+            current += 1;
+            audio.volume = Math.max(0, Math.min(1, audio.volume + delta));
+            if (current >= steps) clearInterval(id);
+        }, stepTime);
+    }
+
+   playFireSound() {
+        this.fireSound = new Audio('../public/models/assets/firesound.wav');
+        this.fireSound.loop = false;
+        this.fireSound.volume = 0.6; // foreground
+
+        // After fire ends, gently bring background up a bit
+        this._onFireEnded = () => {
+            if (!this.isPlaying) return;
+            if (this.endSound) {
+                this._fadeVolume(this.endSound, this.endSound.volume, 0.35, 1200);
+            }
+        };
+        this.fireSound.addEventListener('ended', this._onFireEnded, { once: true });
+
+        this.fireSound.play().catch(() => {});
+    }
+
+   playBackgroundSound({ startQuiet = false } = {}) {
+        if (!this.isPlaying) return;
+        if (!this.endSound) {
+            this.endSound = new Audio('../public/models/assets/scary-horror-music-351315.mp3');
+            this.endSound.loop = true;
+            this.endSound.volume = startQuiet ? 0.08 : 0.35; // underlay
+        } else if (startQuiet) {
+            this.endSound.volume = Math.min(this.endSound.volume, 0.08);
+        }
+        this.endSound.play().catch(() => {});
+        // If we started quiet, fade in slightly so it sits under the fire
+        if (startQuiet) this._fadeVolume(this.endSound, this.endSound.volume, 0.18, 900);
     }
 
     // Stop sounds safely
     stopSounds() {
-        if (this.elevatorSound) {
-            this.elevatorSound.pause();
-            this.elevatorSound = null;
+        if (this.fireSound) {
+            try {
+                if (this._onFireEnded) {
+                    this.fireSound.removeEventListener('ended', this._onFireEnded);
+                    this._onFireEnded = null;
+                }
+                this.fireSound.pause();
+            } catch {}
+            this.fireSound = null;
         }
-        if (this.growlSound) {
-            this.growlSound.pause();
-            this.growlSound = null;
+        if (this.endSound) {
+            try { this.endSound.pause(); } catch {}
+            this.endSound = null;
         }
     }
-
 
 
 
@@ -305,6 +320,10 @@ export class cutscene12{
         this.cutsceneContainer?.remove();
         document.getElementById('cutscene-styles')?.remove();
         this.cutsceneContainer = null;
+
+         // Notify listeners that the cutscene finished
+        try { window.dispatchEvent(new CustomEvent('endcutscene:finished')); } catch {}
+
         
         // Call completion callback
         if (this.onComplete) {

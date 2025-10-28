@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { loadLevel, progressToLevel2, isLevelTransitioning, transitionToLevel } from "./core/levelLoader.js";
+import { loadLevel, isLevelTransitioning, transitionToLevel, getCurrentLevel, showLoadingOverlay, hideLoadingOverlay } from "./core/levelLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { GameController } from "./gameplay/gameController.js";
 import { OpeningCutscene } from "./gameplay/cutscene.js";
@@ -16,16 +16,6 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyO" && controls.isLocked && !gameController?.isPaused()){
     addDoorAtCrosshair();
   } 
-  
-  // L key for level progression
-  if (e.code === "KeyL" && controls.isLocked && !gameController?.isPaused() && !isLevelTransitioning()) {
-    // Immediately transition to Level 3 (blenderL3) when L is pressed
-    transitionToLevel('level3', scene, gameController, camera, 'Entering the experiment testing room')
-      .then(success => {
-        if (success) console.log('[Main] Successfully progressed to Level 3');
-        else console.warn('[Main] Failed to progress to Level 3');
-      });
-  }
 });
 
 // --- Renderer ---
@@ -62,7 +52,7 @@ let doorManager = null;
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-5);
+camera.position.set(0,1.7,-8);
 camera.lookAt(0, 1.7, 0);
 
 
@@ -93,43 +83,83 @@ window.addEventListener("level:loaded", (e) => {
   if (levelName === "level2" || levelName === 'level3') {
     console.log(`[main] ${levelName} loaded, initializing DoorManager...`);
     initializeDoorManager();
+    // If we loaded level3, enable the Screen001 interaction (mini-game)
+    if (levelName === 'level3' && typeof gameController !== 'undefined' && gameController) {
+      try {
+        gameController.enableScreenInteraction();
+        console.log('[main] Enabled Screen001 interaction for level3');
+      } catch (err) {
+        console.warn('[main] Failed to enable Screen001 interaction:', err);
+      }
+    }
   }
 });
 
 // Listen for keycard usage event from level2 and transition to level3 with a custom message
 window.addEventListener('keycard:used', async (e) => {
+  if (_cutscene23Playing || isLevelTransitioning()) return; // guard
+  _cutscene23Playing = true;
+
   const detail = e.detail || {};
   const target = detail.targetLevel || 'level3';
   const message = detail.loadingMessage || 'Loading...';
   console.log('[main] Keycard used, transitioning to', target, 'with message:', message);
 
-  // Use the level loader to show the custom message and load target
-  // We rely on loadLevel to accept side-effects; show loading screen first
-  const loadingEl = document.getElementById('loading-screen');
-  if (loadingEl) {
-    // Update message if loading screen already exists
-    const p = loadingEl.querySelector('.loading-content p');
-    if (p) p.textContent = message;
-    loadingEl.style.display = 'flex';
-  } else {
-    // Create a simple loading screen if none exists
-    const ls = document.createElement('div');
-    ls.id = 'loading-screen';
-    ls.innerHTML = `<div class="loading-content"><h2>LOADING...</h2><div class="loading-spinner"></div><p>${message}</p></div>`;
-    ls.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.9);z-index:10000;color:white;font-family:monospace;';
-    document.body.appendChild(ls);
-  }
+  try { controls.unlock(); } catch {}
 
-  try {
-    const success = await transitionToLevel(target, scene, gameController, camera, message);
-    if (success) {
-      console.log('[main] Transition to', target, 'complete');
-    } else {
-      console.warn('[main] Transition to', target, 'failed');
+  const l23 = new cutscene23('/models/assets/cutscene23.png');
+
+  let level3TransitionPromise = null;
+  let level3TransitionResolved = false;
+
+  l23.play( 
+    async () => {
+      let overlayShown = false;
+      try {
+        if (!level3TransitionPromise) {
+          level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
+            message,
+            showLoadingScreen: false
+          });
+          level3TransitionPromise.finally(() => {
+            level3TransitionResolved = true;
+          });
+        }
+        if (!level3TransitionResolved) {
+          showLoadingOverlay(message);
+          overlayShown = true;
+        }
+        const success = await level3TransitionPromise;
+        if (success) {
+          console.log('[main] Transition to', target, 'complete');
+        } else {
+          console.warn('[main] Transition to', target, 'failed');
+        }
+      } catch (err) {
+        console.error('[main] Error during keycard transition:', err);
+      } finally {
+        if (overlayShown) {
+          hideLoadingOverlay();
+        }
+        _cutscene23Playing = false;
+      }
+    },
+    () => {
+      if (!level3TransitionPromise) {
+        level3TransitionResolved = false;
+        level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
+          message,
+          showLoadingScreen: false
+        });
+        level3TransitionPromise.finally(() => {
+          level3TransitionResolved = true;
+        });
+      }
     }
-  } catch (err) {
-    console.error('[main] Error during keycard transition:', err);
-  }
+  );
+
+
+  
 });
 
 // ====== ONE-KEY “STAMP A DOOR HERE” ======
@@ -294,6 +324,7 @@ let cutscene = null;
 let levelLoaded = false;
 let readyToInit = false;
 let hasGameStarted = false;
+let _cutscene23Playing = false;
 
 // Schedule cutscene to to play and then 15seconds in, level must start loading
 let cutsceneLoadTimer = null;
@@ -689,8 +720,17 @@ function initializeGame(lights) {
           '/models/assets/logs/office2_Log3.png'
         ],
         caption: 'Office 2 Log'
+      },
+
+      'log':{
+        images: ['/models/assets/logs/revealAll1.png',
+          '/models/assets/logs/revealAll2.png',
+          '/models/assets/logs/revealAll3.png',
+          '/models/assets/logs/revealAll4.png',
+          '/models/assets/logs/revealAll5.png'
+        ],
+        caption: 'Log'
       }
-      // add more mappings as needed
     };
 
     // Preload images
@@ -979,7 +1019,8 @@ function initializeGame(lights) {
     }
 
     let nearest = null;
-    let best = interactionDistance;
+    // Use Infinity so objects with larger allowed ranges (e.g. screens) can be selected
+    let best = Infinity;
     scene.traverse((obj) => {
       if (obj.userData?.interactionType === 'exit') {
         const exitDist = computeInteractDistance(obj);
@@ -992,11 +1033,35 @@ function initializeGame(lights) {
         });
       }
       if (obj.userData?.interactable) {
-        const d = computeInteractDistance(obj);
-        if (d <= interactionDistance && d < best) { best = d; nearest = obj; }
+        const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+        const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+        const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
+        if (d <= maxAllowed && d < best) { best = d; nearest = obj; }
       }
     });
     
+    // Fallback: if traversal didn't find any nearest interactable, try a raycast
+    // from the camera center to pick the object the player is actually looking at.
+    if (!nearest) {
+      try {
+        const rr = new THREE.Raycaster();
+        const mm = new THREE.Vector2(0, 0);
+        rr.setFromCamera(mm, camera);
+        const ints = rr.intersectObjects(scene.children, true);
+        if (ints && ints.length > 0) {
+          for (const it of ints) {
+            const obj = it.object;
+            if (obj && obj.userData && obj.userData.interactable) {
+              const d = it.distance;
+              const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+              const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
+              if (d <= maxAllowed) { nearest = obj; best = d; break; }
+            }
+          }
+        }
+      } catch (e) { console.warn('[Interact] raycast fallback failed', e); }
+    }
+
   if (nearest) {
       if (nearest.userData?.interactionType === 'exit') {
         const dbg = (window.level3ExitNodes || []).map(n => `${n.name}:${n.uuid}`);
@@ -1096,23 +1161,52 @@ function initializeGame(lights) {
 
           //play elevator cutscene and load level 2 in background
           const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          let level2TransitionPromise = null;
+          let level2TransitionResolved = false;
           elevatorCutscene.play(
-            () => {
+            async () => {
               console.log('[Elevator] Cutscene finished — progressing to Level 2...');
-
-
               console.log('[Elevator] Taking elevator to Level 2...');
-                progressToLevel2(scene, gameController, camera).then(success => {
-                window._elevatorCutscenePlaying = false;
-
+              let overlayShown = false;
+              try {
+                if (!level2TransitionPromise) {
+                  level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
+                    message: 'Entering Level 2...',
+                    showLoadingScreen: false
+                  });
+                  level2TransitionPromise.finally(() => {
+                    level2TransitionResolved = true;
+                  });
+                }
+                if (!level2TransitionResolved) {
+                  showLoadingOverlay('Entering Level 2...');
+                  overlayShown = true;
+                }
+                const success = await level2TransitionPromise;
                 if (success) {
                   console.log("[Elevator] Successfully progressed to Level 2");
-                };
-              }).catch(()=>{window._elevatorCutscenePlaying=false;});
+                } else {
+                  console.warn('[Elevator] Transition to Level 2 reported failure');
+                }
+              } catch (err) {
+                console.error('[Elevator] Error transitioning to Level 2:', err);
+              } finally {
+                if (overlayShown) {
+                  hideLoadingOverlay();
+                }
+                window._elevatorCutscenePlaying = false;
+              }
             },
             () => {
-              if (typeof loadLevelInBackground === 'function') {
-                loadLevelInBackground();
+              if (!level2TransitionPromise) {
+                level2TransitionResolved = false;
+                level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
+                  message: 'Entering Level 2...',
+                  showLoadingScreen: false
+                });
+                level2TransitionPromise.finally(() => {
+                  level2TransitionResolved = true;
+                });
               }
             }
 
@@ -1199,9 +1293,18 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  camera.position.set(5.76, 1.7, -1.07);
-  camera.lookAt(-5.25, 1.7, -1.07);
-  console.log('[reset] Player position reset');
+  let level = getCurrentLevel();
+
+  if (level === "level3"){
+    camera.position.set(5.76, 1.7, -1.07);
+    camera.lookAt(-5.25, 1.7, -1.07);
+    console.log('[reset] Player position reset level3');
+  }
+  else if (level === "level1"){
+    camera.position.set(0, 1.7, -5);
+    camera.lookAt(0, 1.7, -4);
+    console.log('[reset] Player position reset level1');
+  }
 }
 
 function initializeDoorManager() {
@@ -1475,14 +1578,18 @@ function checkForInteractables() {
 
   const interactionDistance = 1.8;
   let target = null;
-  let best = interactionDistance;
+  // Use Infinity so per-object allowed distances (e.g. Screen001 = 2.0m) can exceed the default
+  let best = Infinity;
   let flashlightTaken = false;
 
   // Use cached interactables instead of scene.traverse
   for (const obj of cachedInteractables) {
     if (!obj.parent || !obj.userData?.interactable) continue; // Skip if object was removed or no longer interactable
     
-    const d = computeInteractDistance(obj);
+  const d = camera.position.distanceTo(obj.getWorldPosition(new THREE.Vector3()));
+  // Per-object allowed interaction distance (special-case Screen001 / interactionType 'screen')
+  const isScreenObj = (obj.name === 'Screen001' || obj.userData?.interactionType === 'screen');
+  const maxAllowed = isScreenObj ? 2.0 : interactionDistance;
 
     // Special casing for flashlight aura
     if (obj.name?.includes("Flash_Light") && obj.userData.aura) {
@@ -1492,7 +1599,27 @@ function checkForInteractables() {
     }
 
     // Handle generators and other interactables (no aura effect for generators)
-    if (!flashlightTaken && d <= interactionDistance && d < best) { target = obj; best = d; }
+    if (!flashlightTaken && d <= maxAllowed && d < best) { target = obj; best = d; }
+  }
+
+  // Debug: throttle logs to avoid spamming
+  try {
+    const now = performance.now();
+    if (!window._screenDebugLast || (now - window._screenDebugLast) > 1000) {
+      window._screenDebugLast = now;
+      const screenObj = (window.cachedInteractables || []).find(o => o.name === 'Screen001' || o.userData?.interactionType === 'screen');
+      if (screenObj) {
+        const dist = camera.position.distanceTo(screenObj.getWorldPosition(new THREE.Vector3()));
+        if (dist <= interactionDistance) {
+          console.log(`[DEBUG] Screen001 nearby (dist=${dist.toFixed(2)}). interactable=${!!screenObj.userData?.interactable}, interactionType=${screenObj.userData?.interactionType}`);
+        } else {
+          // not within interaction distance but present in cache
+          console.log(`[DEBUG] Screen001 cached but far (dist=${dist.toFixed(2)}). interactable=${!!screenObj.userData?.interactable}`);
+        }
+      }
+    }
+  } catch {
+    // ignore debug errors
   }
   
   // Also check for keycard reader even if not marked as interactable
@@ -1504,20 +1631,34 @@ function checkForInteractables() {
   });
 
   if (target) {
+    // Debug: log when Screen001 becomes the selected target (throttled)
+    try {
+      if ((target.name === 'Screen001' || target.userData?.interactionType === 'screen')) {
+        const now2 = performance.now();
+        if (!window._screenSelectedLast || (now2 - window._screenSelectedLast) > 1000) {
+          window._screenSelectedLast = now2;
+          const distSel = camera.position.distanceTo(target.getWorldPosition(new THREE.Vector3()));
+          console.log(`[DEBUG] Screen001 selected as target (dist=${distSel.toFixed(2)}). Showing popup.
+  target.userData:`, target.userData);
+        }
+      }
+  } catch { /* ignore */ }
     interactionIndicator.style.display = "block";
     const p = target.getWorldPosition(new THREE.Vector3()); 
     
     // Check if target is a generator to customize the prompt
     const isGenerator = target.name === "powerpulse1";
     const isKeycodTerminal = target.name === "Object_7" && target.userData.interactionType === "keycode";
-    const isComputer = target.name === "defaultMaterial001_1" && target.userData.interactionType === "computer";
+  const isComputer = target.name === "defaultMaterial001_1" && target.userData.interactionType === "computer";
+  // Screen support: named Screen001 or any object explicitly marked as 'screen'
+  const isScreen = target.name === 'Screen001' || target.userData.interactionType === 'screen';
     const isNote = target.name === "office2_Log1" && target.userData.interactionType === "note";
     const isSafeBox = target.name === "Cube014_1" && target.userData.interactionType === "safebox";
     const isElevator = target.name === "Mesh_0001" && target.userData.interactionType === "elevator";
     const isDoor = target.userData.interactionType === "door";
     const isExit = target.userData.interactionType === "exit";
     const isKeycardReader = target.name === "Cube003_keyPad_0" && target.userData.interactionType === "keycard-reader";
-    const isLog = target.name.includes("Log") && target.userData.interactionType === "log";
+    const isLog = target.userData.interactionType === "log";
     
     if (isGenerator) {
       p.y += 0.2; // Lower position for generator
@@ -1528,6 +1669,9 @@ function checkForInteractables() {
     } else if (isComputer) {
       p.y += 0.5; // Higher position for computer
       interactionIndicator.textContent = "Press E to use Computer";
+    } else if (isScreen) {
+      p.y += 0.5; // Higher position for screen
+      interactionIndicator.textContent = "Press E to Play";
     } else if (isNote) {
       p.y += 0.5; // Higher position for note
       interactionIndicator.textContent = "Press E to read note";
@@ -1538,6 +1682,8 @@ function checkForInteractables() {
       p.y += 0.5;
       if (typeof target.userData?.getInteractLabel === "function") {
         interactionIndicator.textContent = target.userData.getInteractLabel();
+      } else if (typeof target.userData?.interactLabelText === 'string') {
+        interactionIndicator.textContent = target.userData.interactLabelText;
       } else {
         interactionIndicator.textContent = "Press E to Exit";
       }

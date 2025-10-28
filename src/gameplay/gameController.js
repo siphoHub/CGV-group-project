@@ -1,7 +1,10 @@
 // Game Controller to manage HUD and game state
 import * as THREE from 'three';
 import { HUD } from './hud.js';
+import ZipOverlay from './zipOverlay.js';
 import { showCreditsOverlay } from './credits.js';
+
+import { endcutscene } from './endcutscene.js';
 
 export class GameController {
   constructor(scene, camera,lights, controls,initialLightingState='normal') {
@@ -25,6 +28,7 @@ export class GameController {
 
     // Make sure generator is interactable from start
     this.ensureGeneratorInteractable();
+  // Screen interaction is enabled when the appropriate level is loaded (main.js will call enableScreenInteraction for level3)
 
 
     // Audio system for sound effects
@@ -39,6 +43,18 @@ export class GameController {
 
     this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
+
+  // Mini-game audio cues
+  this.deniedSound = new Audio('../public/models/assets/denied-sound.mp3');
+  this.deniedSound.volume = 0.9;
+  this.selfDestructSound = new Audio('../public/models/assets/self destruct initiated.mp3');
+  this.selfDestructSound.volume = 0.9;
+  // Extra soundtrack to play shortly after successful Zip completion
+  this.surgeonAttackSound = new Audio('../public/models/assets/Samuel_Laflamme_-_Surgeon_Attack_Outlast_OST.mp3');
+  this.surgeonAttackSound.volume = 0.9;
+
+  // Track whether the Zip mini-game has been completed (won) so it cannot be replayed
+  this._zipCompleted = false;
 
     // Initialize lighting to normal state
     this.setLightingState(initialLightingState);
@@ -89,6 +105,12 @@ export class GameController {
 
     // End the level when level3 exit is triggered
     window.addEventListener('level3:exit', () => {
+      //GATE THE EXIT BY ZIP WIN
+      if (!this._zipCompleted) {
+        this.hud?.showMessage?.('Exit locked. Find the arcade machine first.', 1800);
+        return;
+      }
+
       this.onLevel3ExitReached();
     });
 
@@ -101,6 +123,12 @@ export class GameController {
 
     // Exit door (level 3)
     if (object.userData?.interactionType === 'exit') {
+      // Gate by Zip completion
+      if (!this._zipCompleted) {
+        this.hud?.showMessage?.('Exit locked. Find the arcade machine first.', 1800);
+        return;
+      }
+
       // allow both: main calling handleInteraction, or node.userData.onInteract hitting the event
       this.onLevel3ExitReached();
       return;
@@ -132,10 +160,25 @@ export class GameController {
           this.playScaryScream();
         }, 500); // 0.5 seconds delay
         break;
-      default:
 
       //batteries
 
+      case 'Screen001':
+        // Open the mini-game (Zip-like) when player interacts with the screen
+        try {
+          console.log('[Screen001] Interaction triggered - opening mini-game');
+          // Unlock controls so the player can interact with the DOM overlay
+          if (this.controls && typeof this.controls.unlock === 'function') {
+            try { this.controls.unlock(); } finally { /* ignore */ }
+          }
+          this.openZipMiniGame();
+          console.log('[Screen001] openZipMiniGame() called');
+        } catch (e) {
+          console.warn('[Screen001] Failed to open mini-game:', e);
+        }
+        break;
+
+      default:
       if (object.name && object.name.toLowerCase().includes('battery'))
       {
         this.playPickupSound();
@@ -338,6 +381,129 @@ stopRoomFlashing() {
     if (this.lights.dirLight) this.lights.dirLight.intensity = 0;
   }
 }
+  
+  // Pause/resume helpers for audio and countdown
+  _pauseAllGameAudio() {
+    this._pausedAudio = this._pausedAudio || {};
+    const audios = ['itemPickupSound','flashlightSwitchSound','generatorSound','scaryScreamSound','deniedSound','selfDestructSound','surgeonAttackSound'];
+    for (const k of audios) {
+      const a = this[k];
+      if (a && !a.paused) {
+        try { this._pausedAudio[k] = a.currentTime || 0; a.pause(); } catch (err) { void err; }
+      }
+    }
+    // Also pause any escape tick sound
+    if (this._escapeTickSound && !this._escapeTickSound.paused) {
+      try { this._pausedAudio['_escapeTickSound'] = this._escapeTickSound.currentTime || 0; this._escapeTickSound.pause(); } catch (err) { void err; }
+    }
+  }
+
+  _resumeAllGameAudio() {
+    if (!this._pausedAudio) return;
+    for (const k of Object.keys(this._pausedAudio)) {
+      try {
+        if (k === '_escapeTickSound' && this._escapeTickSound) {
+          this._escapeTickSound.currentTime = this._pausedAudio[k] || 0;
+          this._escapeTickSound.play().catch(() => {});
+        } else if (this[k]) {
+          this[k].currentTime = this._pausedAudio[k] || 0;
+          this[k].play().catch(() => {});
+        }
+      } catch (err) { void err; }
+    }
+    this._pausedAudio = {};
+  }
+
+  _pauseEscapeCountdown() {
+    if (this._escapeCountdownTimer) {
+      clearInterval(this._escapeCountdownTimer);
+      this._escapeCountdownTimer = null;
+      this._escapePaused = true;
+    }
+  }
+
+  _scheduleEscapeInterval() {
+    // ensure any existing timer cleared
+    if (this._escapeCountdownTimer) clearInterval(this._escapeCountdownTimer);
+    this._escapeCountdownTimer = setInterval(() => {
+      this._escapeRemaining -= 1;
+      const inner = document.getElementById('escape-countdown-inner');
+      if (inner) {
+        inner.textContent = String(this._escapeRemaining);
+        inner.style.transform = 'scale(1.06)';
+        setTimeout(() => { if (inner) inner.style.transform = ''; }, 250);
+      }
+      try { if (this._escapeTickSound) { this._escapeTickSound.currentTime = 0; this._escapeTickSound.play().catch(() => {}); } } catch (err) { void err; }
+
+      if (this._escapeRemaining <= 0) {
+        // finalize countdown
+        this.stopEscapeCountdown();
+        const ov2 = document.getElementById('escape-countdown-overlay'); if (ov2) ov2.style.display = 'none';
+        try {
+          const ex = new Audio('../public/models/assets/explosion.mp3');
+          ex.volume = 1.0;
+          ex.play().catch(() => {});
+  } catch (err) { void err; }
+
+        try {
+          const flash = document.createElement('div');
+          flash.id = 'explosion-flash';
+          flash.style.cssText = [
+            'position:fixed',
+            'inset:0',
+            'pointer-events:none',
+            'z-index:100001',
+            "background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.98) 0%, rgba(255,245,200,0.95) 14%, rgba(255,180,90,0.85) 34%, rgba(0,0,0,0) 60%)",
+            'opacity:0',
+            'transition: opacity 220ms ease-out, transform 600ms ease-out'
+          ].join(';');
+          document.body.appendChild(flash);
+          requestAnimationFrame(() => { flash.style.opacity = '1'; flash.style.transform = 'scale(1.02)'; });
+          setTimeout(() => { flash.style.opacity = '0'; flash.style.transform = 'scale(1.08)'; setTimeout(() => { try { flash.remove(); } catch (err) { void err; } }, 600); }, 140);
+        } catch (err) { void err; }
+
+        try { this.handleGameOver(this._escapeFinalMessage); } catch (err) { console.warn('[GameController] handleGameOver failed', err); }
+      }
+    }, 1000);
+  }
+
+  _resumeEscapeCountdown() {
+    if (!this._escapePaused) return;
+    this._escapePaused = false;
+    if (this._escapeRemaining > 0) {
+      this._scheduleEscapeInterval();
+    }
+  }
+
+  // Stop and reset all game audio that might be playing for the dramatic sequence
+  stopAllGameAudio() {
+    const audios = ['surgeonAttackSound','selfDestructSound','deniedSound','generatorSound','itemPickupSound','flashlightSwitchSound','scaryScreamSound'];
+    for (const k of audios) {
+      try {
+        const a = this[k];
+        if (a) {
+          try { a.pause(); } catch (err) { void err; }
+          try { a.currentTime = 0; } catch (err) { void err; }
+        }
+      } catch (err) { void err; }
+    }
+    // stop tick sound if present
+    try { if (this._escapeTickSound) { this._escapeTickSound.pause(); this._escapeTickSound.currentTime = 0; } } catch (err) { void err; }
+    // clear any stored paused-audio markers
+    try { this._pausedAudio = {}; } catch (err) { void err; }
+  }
+
+  _removeEscapeHint() {
+    try {
+      // traverse and remove any interactSprite attached to exit nodes
+      this.scene.traverse((o) => {
+        if (o && o.userData && o.userData.interactSprite) {
+          try { const s = o.userData.interactSprite; if (s.parent) s.parent.remove(s); } catch (err) { void err; }
+          try { o.userData.interactSprite = null; } catch (err) { void err; }
+        }
+      });
+    } catch (err) { void err; }
+  }
   // Getter for flashlight state
   get hasFlashlight() {
     const flashlightState = this.hud.getFlashlightState();
@@ -428,6 +594,243 @@ stopRoomFlashing() {
       window.updateInteractableCache();
     } else {
       console.log('[Flashlight] WARNING: updateInteractableCache not available!');
+    }
+  }
+
+  // Enable interaction for Screen001 in level3
+  enableScreenInteraction() {
+    console.log('[Screen] Enabling Screen001 interaction...');
+    let found = false;
+    this.scene.traverse((child) => {
+      if (child.name === 'Screen001') {
+        child.userData.interactable = true;
+        // require E to interact (typical for object interactions)
+        child.userData.requiredKey = 'E';
+        // mark as screen so HUD can show proper label
+        child.userData.interactionType = 'screen';
+        found = true;
+        // optional small glow
+        if (!child.userData.aura && child.parent) {
+          const glow = new THREE.PointLight(0x88ccff, 0.3, 2);
+          glow.position.copy(child.position);
+          child.userData.aura = glow;
+          child.parent.add(glow);
+        }
+        console.log('[Screen] Screen001 made interactable');
+      }
+    });
+
+    if (!found) console.log('[Screen] WARNING: Screen001 not found in scene');
+
+    if (window.updateInteractableCache) {
+      window.updateInteractableCache();
+    } else if (window.refreshInteractableCache) {
+      window.refreshInteractableCache();
+    }
+  }
+
+
+
+// Add a helper to toggle the exit interactable on/off
+  setExitInteractable(enabled) {
+    try {
+      const normalize = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const targetNorm = normalize('Object_2011');
+      let exitObj = null;
+
+      try { exitObj = this.scene.getObjectByName && this.scene.getObjectByName('Object_2011'); } catch (e) { void e; }
+      if (!exitObj) {
+        this.scene.traverse((child) => {
+          if (exitObj || !child || !child.name) return;
+          try {
+            const n = normalize(child.name);
+            if (n === targetNorm || n.includes(targetNorm) || targetNorm.includes(n)) exitObj = child;
+          } catch (e) { void e; }
+        });
+      }
+
+      if (!exitObj) {
+        console.warn('[Exit] Exit object (Object_2011) not found.');
+        return;
+      }
+
+      // Apply gating
+      exitObj.userData.interactable = !!enabled;
+      if (enabled) {
+        exitObj.userData.requiredKey = 'E';
+        exitObj.userData.interactionType = 'exit';
+        exitObj.userData.getInteractLabel = function () { return 'Press E to Escape'; };
+      } else {
+        // Keep/clear marker to avoid accidental triggers
+        exitObj.userData.requiredKey = 'E';
+        exitObj.userData.interactionType = 'exit';
+        exitObj.userData.getInteractLabel = function () { return 'Locked'; };
+        // Remove any floating hints
+        try {
+          if (exitObj.userData.interactSprite && exitObj.userData.interactSprite.parent) {
+            exitObj.userData.interactSprite.parent.remove(exitObj.userData.interactSprite);
+          }
+          exitObj.userData.interactSprite = null;
+        } catch (e) { void e; }
+      }
+
+      // Refresh global interactables (whichever is available)
+      try { if (window.updateInteractableCache) window.updateInteractableCache(); else if (window.refreshInteractableCache) window.refreshInteractableCache(); } catch (e) { void e; }
+      // Ensure it is in/out of cache list
+      try {
+        if (window.cachedInteractables && Array.isArray(window.cachedInteractables)) {
+          const i = window.cachedInteractables.indexOf(exitObj);
+          if (enabled && i === -1) window.cachedInteractables.push(exitObj);
+          if (!enabled && i !== -1) window.cachedInteractables.splice(i, 1);
+        }
+      } catch (e) { void e; }
+    } catch (err) { console.warn('[Exit] setExitInteractable failed', err); }
+  }
+
+
+
+
+
+  // Open a simple lightweight Zip-like mini-game overlay
+  openZipMiniGame() {
+    // Prevent opening multiple times
+    if (this._zipActive) return;
+    if (this._zipCompleted) {
+      // already completed - give feedback
+      this.hud?.showMessage?.('Purge already initiated.', 1800);
+  try { this.selfDestructSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] selfDestructSound play failed', err); }
+      return;
+    }
+    this._zipActive = true;
+
+    // Unlock controls so the overlay can receive DOM input
+    if (this.controls && typeof this.controls.unlock === 'function') {
+      try { this.controls.unlock(); } catch { /* ignore */ }
+    }
+
+    // Demo level data for the ZipOverlay. Replace or extend as needed.
+    const demoLevel = {
+      nodes: [
+        { x: 0.08, y: 0.18, label: '7*7', expr: '7*7' },        // 49
+        { x: 0.28, y: 0.10, label: '94/2', expr: '94/2' },      // 47
+        { x: 0.46, y: 0.16, label: '9*5', expr: '9*5' },        // 45
+        { x: 0.64, y: 0.10, label: '40+1', expr: '40+1' },      // 41
+        { x: 0.82, y: 0.18, label: '3*13', expr: '3*13' },      // 39
+        { x: 0.12, y: 0.46, label: '6*6', expr: '6*6' },        // 36
+        { x: 0.32, y: 0.52, label: '58/2', expr: '58/2' },      // 29
+        { x: 0.52, y: 0.46, label: '46/2', expr: '46/2' },      // 23
+        { x: 0.72, y: 0.56, label: '7+7', expr: '7+7' },        // 14
+        { x: 0.92, y: 0.48, label: '12/2', expr: '12/2' }       // 6
+      ],
+      allowCross: false
+    };
+
+    // Open the ZipOverlay singleton and wire minimal callbacks
+    try {
+      ZipOverlay.open({
+        level: demoLevel,
+        onWin: () => {
+          // mark completed so it cannot be played again
+          this._zipCompleted = true;
+          // disable Screen001 interactable so main loop won't offer it again
+          try {
+            this.scene.traverse((child) => { if (child.name === 'Screen001') { child.userData.interactable = false; } });
+          } catch (err) { console.warn('[Zip] disabling Screen001 failed', err); }
+          try { this.selfDestructSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] selfDestructSound play failed', err); }
+          // Play the surgeon attack OST 2 seconds after successful Zip completion
+          try {
+            setTimeout(() => {
+              try { this.surgeonAttackSound.currentTime = 0; this.surgeonAttackSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] surgeonAttackSound play failed', err); }
+            }, 2000);
+          } catch (err) { console.warn('[Zip] scheduling surgeonAttackSound failed', err); }
+          // Start a dramatic escape countdown (70s) — if it reaches 0, player dies with custom message
+          try { this.startEscapeCountdown(70, "You didnt escape in time"); } catch (err) { console.warn('[Zip] startEscapeCountdown failed', err); }
+
+          // Make the escape door/object interactable so player can press E to escape
+          try { this.setExitInteractable(true); } catch (err) { console.warn('[Zip] enabling exit failed', err); }
+          try {
+            // loose name normalizer: lowercase and strip non-alphanumeric for robust matching
+            const normalize = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
+            const targetNorm = normalize('Object_2011');
+
+            let found = null;
+            // try direct name lookup first
+            try { found = this.scene.getObjectByName && this.scene.getObjectByName('Object_2011'); } catch (e) { void e; }
+
+            // otherwise traverse and match loosely
+            if (!found) {
+              this.scene.traverse((child) => {
+                if (found || !child || !child.name) return;
+                try {
+                  if (normalize(child.name) === targetNorm || normalize(child.name).includes(targetNorm) || targetNorm.includes(normalize(child.name))) {
+                    found = child;
+                  }
+                } catch (e) { void e; }
+              });
+            }
+
+            if (!found) {
+              console.warn('[Zip] Object_2011 not found in scene; cannot make exit interactable');
+            } else {
+              const child = found;
+              console.log('[Zip] making', child.name, 'an exit interactable');
+              // mark as an exit interactable
+              child.userData.interactable = true;
+              child.userData.requiredKey = 'E';
+              child.userData.interactionType = 'exit';
+              // refresh the global interactable cache so main loop picks this up
+              try { if (window.updateInteractableCache) window.updateInteractableCache(); else if (window.refreshInteractableCache) window.refreshInteractableCache(); } catch (e) { void e; }
+              // Ensure the global cached array contains this object immediately
+              try {
+                if (window.cachedInteractables && Array.isArray(window.cachedInteractables) && window.cachedInteractables.indexOf(child) === -1) {
+                  window.cachedInteractables.push(child);
+                }
+              } catch (e) { void e; }
+              // Provide a custom label for the interaction indicator
+              try { child.userData.getInteractLabel = function() { return 'Press E to Escape'; }; child.userData.interactLabelText = 'Press E to Escape'; } catch (e) { void e; }
+            }
+          } catch (err) { console.warn('[Zip] making Object_2011 interactable failed', err); }
+          try { if (this.onZipWin) this.onZipWin(); } catch (err) { console.warn('[Zip] onZipWin handler error', err); }
+          try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+          this._zipActive = false;
+          if (this.controls && typeof this.controls.lock === 'function') {
+            try { this.controls.lock(); } catch (err) { console.warn('[Zip] controls.lock failed', err); }
+          }
+        },
+        onFail: (reason) => {
+          try { this.deniedSound.play().catch(() => {}); } catch (err) { console.warn('[Zip] deniedSound play failed', err); }
+          try { if (this.onZipFail) this.onZipFail(reason); } catch (err) { console.warn('[Zip] onZipFail handler error', err); }
+          // keep _zipActive true so player can retry without re-opening if needed
+          this._zipActive = false;
+        }
+      });
+    } catch (err) {
+      console.warn('[Zip] Failed to open ZipOverlay:', err);
+      this._zipActive = false;
+    }
+  }
+
+  // createZipOverlay is delegated to ZipOverlay module
+  createZipOverlay() {
+    try { ZipOverlay.open(); } catch (e) { console.warn('[Zip] createZipOverlay failed:', e); }
+  }
+
+  endZipGame(won) {
+    // delegate to ZipOverlay for consistent UX
+    try { if (won) window.dispatchEvent(new CustomEvent('zip:won')); } catch (err) { console.warn('[Zip] dispatch zip:won failed', err); }
+    try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+    this._zipActive = false;
+  }
+
+  closeZipMiniGame() {
+    try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
+    this._zipActive = false;
+    if (this._zipCleanup) { try { this._zipCleanup(); } catch (err) { console.warn('[Zip] cleanup handler error', err); } finally { this._zipCleanup = null; } }
+    if (this._zipPreviousFocus && typeof this._zipPreviousFocus.focus === 'function') {
+      try { this._zipPreviousFocus.focus(); } catch { /* ignore */ }
+    }
+    if (this.controls && typeof this.controls.lock === 'function') {
+      try { this.controls.lock(); } catch { /* ignore */ }
     }
   }
 
@@ -564,6 +967,18 @@ stopRoomFlashing() {
   // Toggle pause menu
   togglePause() {
     const isPaused = this.hud.togglePause();
+
+    // Pause or resume gameplay-adjacent effects (audio, escape countdown)
+    try {
+      if (isPaused) {
+        this._pauseAllGameAudio();
+        this._pauseEscapeCountdown();
+      } else {
+        this._resumeAllGameAudio();
+        this._resumeEscapeCountdown();
+      }
+    } catch (err) { console.warn('[GameController] pause/resume handlers failed', err); }
+
     return isPaused;
   }
 
@@ -582,6 +997,23 @@ stopRoomFlashing() {
     this.hud.updateObjectivesDisplay();
 
     console.log('[Objectives] Initialized with first objective: Turn on the power');
+  }
+
+  initializeLevel3Objectives() {
+    // Reset any level-progress flags that are irrelevant for Level 3
+    this.powerTurnedOn = false;
+    this.flashlightPickedUp = false;
+    this.generatorActivated = false;
+
+    // Set the objectives UI to the single Level 3 objective
+    if (this.hud) {
+      this.hud.objectives = [ { id: 1, text: 'Find the Arcade machine', completed: false } ];
+      try { this.hud.updateObjectivesDisplay(); } catch (err) { console.warn('[GameController] updateObjectivesDisplay failed', err); }
+    }
+    console.log('[Objectives] Level 3 objectives initialized: Find the Arcade machine');
+    // Ensure exit is locked at level start
+    try { this.setExitInteractable(false); } catch (e) { void e; }
+
   }
 
   // Initialize level 2 specific objectives
@@ -696,11 +1128,59 @@ stopRoomFlashing() {
     });
   }
 
-  onLevel3ExitReached() {
+
+  //END CUTSCENE
+      playEndcutscene() {
+    // Allow DOM overlay input if your cutscene uses it
+    try { this.controls?.unlock?.(); } catch (err) { void err; }
+
+    // Return a promise that resolves when the cutscene finishes.
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+
+      try {
+        // Use same asset base as the rest of the project
+        const endcut = new endcutscene('../public/models/assets/endcutscene.png');
+        // START the cutscene and resolve when it completes
+        try { endcut.play(finish); } catch (e) { void e; }
+      } catch (e) { /* if construction fails, fall through to timeout */ }
+
+      // Fallback: listen for a global signal if endcutscene dispatches one
+      window.addEventListener('endcutscene:finished', finish, { once: true });
+
+      // Safety timeout so we always progress (20s)
+      setTimeout(finish, 20000);
+    });
+  }
+
+  // onLevel3ExitReached() {
+  //   // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
+  //   this.completeObjective(1);
+  //   // Stop any active countdowns and game music before showing credits
+  // try { this.stopEscapeCountdown(); } catch (err) { void err; }
+  // try { this.stopAllGameAudio(); } catch (err) { void err; }
+  // // remove any interact sprite hint left behind
+  // try { this._removeEscapeHint(); } catch (err) { void err; }
+    
+  //   this.showEndCredits();
+  //   console.log('[Level3] Exit reached – rolling credits (countdown/music stopped)');
+  // }
+
+  async onLevel3ExitReached() {
     // Complete the level 3 objective (id 1 = "Explore lab and Find exit")
     this.completeObjective(1);
+    // Stop any active countdowns and game music before showing credits
+    try { this.stopEscapeCountdown(); } catch (err) { void err; }
+    try { this.stopAllGameAudio(); } catch (err) { void err; }
+    // remove any interact sprite hint left behind
+    try { this._removeEscapeHint(); } catch (err) { void err; }
+
+    // Wait for the cutscene to finish before rolling credits
+    try { await this.playEndcutscene(); } catch (err) { void err; }
+
     this.showEndCredits();
-    console.log('[Level3] Exit reached – rolling credits');
+    console.log('[Level3] Exit reached – rolling credits (countdown/music stopped)');
   }
 
   showEndCredits() {
@@ -714,19 +1194,65 @@ stopRoomFlashing() {
   }
 
   //game over
-  handleGameOver()
-  {
-    console.log('[GameController] Game Over triggered - battery depleted');
-    this.flashlight.visible = false;
+  handleGameOver(message) {
+    console.log('[GameController] Game Over triggered', message ? `- ${message}` : '');
+    if (this.flashlight) this.flashlight.visible = false;
 
-    if (this.controls)
-    {
-      this.controls.unlock();
+    if (this.controls) {
+      try { this.controls.unlock(); } catch (err) { void err; }
     }
 
-    this.hud.showGameOverScreen();
-  setTimeout(() => {
-    this.playScaryScream();
-  }, 300);
+    // show provided message or default
+    try { this.hud.showGameOverScreen(message); } catch (err) { console.warn('[GameController] hud.showGameOverScreen failed', err); }
+  setTimeout(() => { try { this.playScaryScream(); } catch (err) { void err; } }, 300);
+  }
+
+  // Escape countdown (used after successful Zip mini-game)
+  startEscapeCountdown(seconds = 70, finalMessage = "You didnt escape in time") {
+    this.stopEscapeCountdown();
+    // Update objectives UI to reflect escape urgency
+    try {
+      if (this.hud) {
+        this.hud.objectives = [{ id: 1, text: 'Escape in time', completed: false }];
+        this.hud.updateObjectivesDisplay();
+      }
+    } catch (err) { console.warn('[GameController] update objectives for countdown failed', err); }
+
+    this._escapeRemaining = Math.max(0, Math.floor(seconds));
+    this._escapeFinalMessage = finalMessage;
+
+    // create overlay
+    let ov = document.getElementById('escape-countdown-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'escape-countdown-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;z-index:100000;background:rgba(0,0,0,0.6);pointer-events:none;';
+      ov.innerHTML = `<div id="escape-countdown-inner" style="pointer-events:none;color:#ffdddd;text-align:center;font-family:VT323,monospace;font-size:clamp(48px,8vw,160px);text-shadow:0 0 30px rgba(255,50,50,0.9);">${this._escapeRemaining}</div>`;
+      document.body.appendChild(ov);
+    } else {
+      const inner = ov.querySelector('#escape-countdown-inner'); if (inner) inner.textContent = String(this._escapeRemaining);
+      ov.style.display = 'grid';
+    }
+
+    // dramatic tick sound (optional) - create once and keep on the controller so it can be paused
+    try { this._escapeTickSound = new Audio('../public/models/assets/denied-sound.mp3'); this._escapeTickSound.volume = 0.8; } catch (err) { void err; this._escapeTickSound = null; }
+
+    // If the game is currently paused, mark countdown paused and don't start ticking until resume
+    if (this.isPaused && this.hud && this.hud.getPauseState && this.hud.getPauseState()) {
+      this._escapePaused = true;
+      return;
+    }
+
+    // start the interval loop
+    this._escapePaused = false;
+    this._scheduleEscapeInterval();
+  }
+
+  stopEscapeCountdown() {
+    if (this._escapeCountdownTimer) { clearInterval(this._escapeCountdownTimer); this._escapeCountdownTimer = null; }
+    const ov = document.getElementById('escape-countdown-overlay'); if (ov) ov.style.display = 'none';
+    // stop/reset tick sound
+    try { if (this._escapeTickSound && !this._escapeTickSound.paused) { this._escapeTickSound.pause(); this._escapeTickSound.currentTime = 0; } } catch (err) { void err; }
+    this._escapePaused = false;
   }
 }

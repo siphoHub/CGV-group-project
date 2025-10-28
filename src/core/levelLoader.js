@@ -17,6 +17,7 @@ export function isLevelTransitioning() {
 
 export function loadLevel(levelName, scene) {
   //levelName = "level3" //remove
+  currentLevel = levelName;
   switch (levelName) {
     case "level1":
       return loadLevel1(scene);
@@ -94,99 +95,43 @@ function clearCurrentLevel(scene) {
   }
   
   console.log(`[LevelLoader] Cleared ${objectsToRemove.length} objects from scene`);
+  console.log('[LevelLoader] Previous level successfully unloaded from memory');
 }
 
 // Progress to next level with loading screen
-export async function progressToLevel2(scene, gameController, camera) {
-  if (currentLevel !== "level1" || isTransitioning) {
-    return false;
+export async function progressToLevel2(scene, gameController, camera, options = {}) {
+  const transitionOptions = {
+    message: options.message || "Entering Level 2...",
+  };
+  if (options.showLoadingScreen === false) {
+    transitionOptions.showLoadingScreen = false;
   }
-  
-  console.log("[LevelLoader] Starting transition to Level 2...");
-  isTransitioning = true;
-  
-  // Show loading screen (custom message for Level 2)
-  showLoadingScreen("Entering Level 2...");
-  
-  try {
-    // Clear current level
-    clearCurrentLevel(scene);
-    
-    // Clear cached interactables
-    if (window.cachedInteractables) {
-      window.cachedInteractables = [];
-    }
-
-    // Load level 2 and wait for it to complete
-    console.log("[LevelLoader] Loading Level 2...");
-    await loadLevel("level2", scene);
-    currentLevel = "level2";
-
-    if (gameController && typeof gameController.setLightingState === 'function')
-    {
-      gameController.setLightingState("dark");
-      console.log("[LevelLoader] Lighting set to dark mode for Level 2")
-   }
-
-    // Reset player position for level 2
-    if (camera) {
-      camera.position.set(0, 1.7, -5);
-      // Face the opposite direction compared to previous behaviour
-      camera.lookAt(0, 1.7, -10);
-      console.log("[LevelLoader] Player position reset for Level 2");
-    }
-
-    // Ensure flashlight functionality is preserved in level 2
-    if (gameController && gameController.lights && gameController.lights.flashlight) {
-      // Re-attach flashlight to camera for level 2
-      const flashlight = gameController.lights.flashlight;
-      flashlight.userData.isPersistent = true; // Mark as persistent
-      console.log("[LevelLoader] Flashlight functionality preserved for Level 2");
-    }
-    
-    // Update objectives for level 2
-    if (gameController) {
-      // Initialize level 2 specific objectives
-      if (typeof gameController.initializeLevel2Objectives === 'function') {
-        gameController.initializeLevel2Objectives();
-      } else {
-        // Fallback if method doesn't exist
-        gameController.addObjective("Find clue to open office door");
-      }
-    }
-    
-    // Wait for level signals so we don't hide too early
-      try {
-        await waitForEventOnce("level:loaded", 10000);
-        await waitForEventOnce("level:colliders", 10000);
-      } catch (e) {
-        console.warn("[LevelLoader] Proceeding after event wait:", e.message);
-      }
-    
-    console.log("[LevelLoader] Level 2 loading complete!");
-    
-    // Hide loading screen now that assets + signals are in
-    hideLoadingScreen();
-    isTransitioning = false;
-    console.log("[LevelLoader] Transition to Level 2 complete!");
-    
-    return true;
-    
-  } catch (error) {
-    console.error("[LevelLoader] Error during level transition:", error);
-    hideLoadingScreen();
-    isTransitioning = false;
-    return false;
-  }
+  return transitionToLevel("level2", scene, gameController, camera, transitionOptions);
 }
 
 // Generic transition helper: show loading, clear current level, load target, wait for signals
-export async function transitionToLevel(levelName, scene, gameController, camera, message) {
+export async function transitionToLevel(levelName, scene, gameController, camera, options) {
+  let message = 'LOADING...';
+  let showLoading = true;
+
+  if (typeof options === 'string') {
+    message = options || message;
+  } else if (options && typeof options === 'object') {
+    if (typeof options.message === 'string') {
+      message = options.message;
+    }
+    if (options.showLoadingScreen === false) {
+      showLoading = false;
+    }
+  }
+
   if (isTransitioning) return false;
   console.log(`[LevelLoader] Starting transition to ${levelName}...`);
   isTransitioning = true;
 
-  showLoadingScreen(message || 'LOADING...');
+  if (showLoading) {
+    showLoadingOverlay(message || 'LOADING...');
+  }
 
   try {
     clearCurrentLevel(scene);
@@ -194,11 +139,63 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     if (window.cachedInteractables) window.cachedInteractables = [];
 
     // Start waiting for events *before* we call loadLevel so we don't miss events emitted during loading
-    const pColliders = waitForEventOnce('level:colliders', 10000).catch(e => { console.warn('[LevelLoader] level:colliders wait failed:', e.message); return null; });
-    const pLoaded = waitForEventOnce('level:loaded', 10000).catch(e => { console.warn('[LevelLoader] level:loaded wait failed:', e.message); return null; });
+    const pColliders = waitForEventOnce('level:colliders', 45000).catch(e => {
+      console.warn('[LevelLoader] level:colliders wait failed:', e.message);
+      return null;
+    });
+    const pLoaded = waitForEventOnce('level:loaded', 45000).catch(e => {
+      console.warn('[LevelLoader] level:loaded wait failed:', e.message);
+      return null;
+    });
 
     await loadLevel(levelName, scene);
     currentLevel = levelName;
+
+    if (gameController) {
+      if (levelName === 'level2') {
+        if (typeof gameController.setLightingState === 'function') {
+          try {
+            gameController.setLightingState('dark');
+            console.log("[LevelLoader] Lighting set to dark mode for Level 2");
+          } catch (err) {
+            console.warn('[LevelLoader] setLightingState failed for level2', err);
+          }
+        }
+        if (gameController.lights && gameController.lights.flashlight) {
+          const flashlight = gameController.lights.flashlight;
+          flashlight.userData.isPersistent = true;
+          console.log("[LevelLoader] Flashlight functionality preserved for Level 2");
+        }
+        if (typeof gameController.initializeLevel2Objectives === 'function') {
+          try {
+            gameController.initializeLevel2Objectives();
+          } catch (err) {
+            console.warn('[LevelLoader] initializeLevel2Objectives failed', err);
+          }
+        } else if (typeof gameController.addObjective === 'function') {
+          try {
+            gameController.addObjective("Find clue to open office door");
+          } catch (err) {
+            console.warn('[LevelLoader] addObjective fallback for level2 failed', err);
+          }
+        }
+      } else if (levelName === 'level3') {
+        if (typeof gameController.initializeLevel3Objectives === 'function') {
+          try {
+            gameController.initializeLevel3Objectives();
+          } catch (err) {
+            console.warn('[LevelLoader] initializeLevel3Objectives failed', err);
+          }
+        } else {
+          try {
+            gameController.hud.objectives = [{ id: 1, text: 'Find the Arcade machine', completed: false }];
+            gameController.hud.updateObjectivesDisplay();
+          } catch (err) {
+            console.warn('[LevelLoader] fallback set objectives failed', err);
+          }
+        }
+      }
+    }
 
     // Await colliders/loaded promises which were registered before loading started
     let collidersDetail = null;
@@ -216,6 +213,12 @@ export async function transitionToLevel(levelName, scene, gameController, camera
       if (levelName === 'level3') {
         // If colliders are available, pick the best floor-like collider to spawn above it
         let placed = false;
+        if (!placed) {
+          camera.position.set(5.76, 1.7, -1.07);
+          camera.lookAt(-5.25, 1.7, -1.07);
+          placed = true;
+          console.log('[LevelLoader] Spawn override applied for Level 3');
+        }
         // Try to find a named spawn marker first (highest priority)
         try {
           const findByName = (root, name) => {
@@ -240,7 +243,7 @@ export async function transitionToLevel(levelName, scene, gameController, camera
           if (spawnNodeTop) {
             const worldPos = spawnNodeTop.getWorldPosition(new THREE.Vector3());
             const eyeOffset = 1.7;
-            camera.position.set(worldPos.x-1, worldPos.y + eyeOffset + 0.1, worldPos.z);
+            camera.position.set(worldPos.x - 1, worldPos.y + eyeOffset + 0.1, worldPos.z);
             camera.lookAt(-worldPos.x, worldPos.y + 1.0, worldPos.z);
             placed = true;
             console.log('[LevelLoader] Spawned at Cube_Door_0 (preferred) world position:', camera.position.toArray());
@@ -313,9 +316,14 @@ export async function transitionToLevel(levelName, scene, gameController, camera
           camera.lookAt(0, 1.7, 0);
           console.log('[LevelLoader] Fallback Level3 spawn used');
         }
-        
-      } else {
+      } else if (levelName === 'level2') {
         camera.position.set(0, 1.7, -5);
+        camera.lookAt(0, 1.7, -10);
+      } else if (levelName === 'level1') {
+        camera.position.set(0, 1.7, -5);
+        camera.lookAt(0, 1.7, -7);
+      } else {
+        camera.position.set(0, 1.7, -4);
         camera.lookAt(0, 1.7, -10);
       }
       console.log(`[LevelLoader] Player position reset for ${levelName}`);
@@ -325,23 +333,27 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     try {
       await pLoaded;
     } catch (e) {
-      console.warn('[LevelLoader] level:loaded not received in time:', e.message);
+      console.warn('[LevelLoader] level:loaded not received in time:', e?.message);
     }
 
     console.log(`[LevelLoader] ${levelName} loading complete!`);
-    hideLoadingScreen();
+    if (showLoading) {
+      hideLoadingOverlay();
+    }
     isTransitioning = false;
     return true;
   } catch (err) {
     console.error('[LevelLoader] Error during generic level transition:', err);
-    hideLoadingScreen();
+    if (showLoading) {
+      hideLoadingOverlay();
+    }
     isTransitioning = false;
     return false;
   }
 }
 
 // Loading screen functions
-function showLoadingScreen(message) {
+export function showLoadingOverlay(message) {
   let loadingScreen = document.getElementById('loading-screen');
   
   if (!loadingScreen) {
@@ -402,11 +414,18 @@ function showLoadingScreen(message) {
     document.body.appendChild(loadingScreen);
   }
   
+  if (message) {
+    const msgNode = loadingScreen.querySelector('.loading-content p');
+    if (msgNode) {
+      msgNode.textContent = message;
+    }
+  }
+
   loadingScreen.style.display = 'flex';
   console.log("[LevelLoader] Loading screen shown");
 }
 
-function hideLoadingScreen() {
+export function hideLoadingOverlay() {
   const loadingScreen = document.getElementById('loading-screen');
   if (loadingScreen) {
     loadingScreen.style.display = 'none';
