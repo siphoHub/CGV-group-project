@@ -3,5 +3,6 @@ dist
 .DS_Store
 .env
 public/models/*.glb
+!public/models/blenderLevel1.glb
 !public/models/blenderL3.glb
 !public/models/blenderL2.glb
