@@ -60,6 +60,9 @@ export class GameController {
     this.setLightingState(initialLightingState);
 
     this.setupEventListeners();
+
+    this._flashlightSuspendCount = 0;
+    this._restoreFlashlightOnResume = false;
   }
 
   setupEventListeners() {
@@ -114,6 +117,36 @@ export class GameController {
       this.onLevel3ExitReached();
     });
 
+  }
+
+  suspendFlashlight(reason = '') {
+    if (!this.hud || typeof this.hud.getFlashlightState !== 'function') return;
+    if (this._flashlightSuspendCount === 0) {
+      const state = this.hud.getFlashlightState();
+      this._restoreFlashlightOnResume = state.hasFlashlight && state.isOn;
+      if (state.isOn) {
+        this.hud.setFlashlightOn(false);
+        this.updateFlashlightInScene(false);
+      }
+    }
+    this._flashlightSuspendCount++;
+  }
+
+  resumeFlashlight(reason = '') {
+    if (!this.hud || this._flashlightSuspendCount <= 0) {
+      this._flashlightSuspendCount = Math.max(0, this._flashlightSuspendCount || 0);
+      return;
+    }
+    this._flashlightSuspendCount--;
+    if (this._flashlightSuspendCount === 0) {
+      if (this._restoreFlashlightOnResume) {
+        const restored = this.hud.setFlashlightOn(true);
+        this.updateFlashlightInScene(restored);
+      } else {
+        this.updateFlashlightInScene(false);
+      }
+      this._restoreFlashlightOnResume = false;
+    }
   }
 
   // Handle object interactions from main.js
@@ -702,6 +735,7 @@ stopRoomFlashing() {
       return;
     }
     this._zipActive = true;
+    this.suspendFlashlight('zip');
 
     // Unlock controls so the overlay can receive DOM input
     if (this.controls && typeof this.controls.unlock === 'function') {
@@ -793,6 +827,7 @@ stopRoomFlashing() {
           try { if (this.onZipWin) this.onZipWin(); } catch (err) { console.warn('[Zip] onZipWin handler error', err); }
           try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
           this._zipActive = false;
+          this.resumeFlashlight('zip');
           if (this.controls && typeof this.controls.lock === 'function') {
             try { this.controls.lock(); } catch (err) { console.warn('[Zip] controls.lock failed', err); }
           }
@@ -807,6 +842,7 @@ stopRoomFlashing() {
     } catch (err) {
       console.warn('[Zip] Failed to open ZipOverlay:', err);
       this._zipActive = false;
+      this.resumeFlashlight('zip');
     }
   }
 
@@ -825,6 +861,7 @@ stopRoomFlashing() {
   closeZipMiniGame() {
     try { ZipOverlay.close(); } catch (err) { console.warn('[Zip] close failed', err); }
     this._zipActive = false;
+    this.resumeFlashlight('zip');
     if (this._zipCleanup) { try { this._zipCleanup(); } catch (err) { console.warn('[Zip] cleanup handler error', err); } finally { this._zipCleanup = null; } }
     if (this._zipPreviousFocus && typeof this._zipPreviousFocus.focus === 'function') {
       try { this._zipPreviousFocus.focus(); } catch { /* ignore */ }

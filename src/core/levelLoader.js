@@ -133,6 +133,16 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     showLoadingOverlay(message || 'LOADING...');
   }
 
+  let flashlightSuspended = false;
+  if (gameController && typeof gameController.suspendFlashlight === 'function') {
+    try {
+      gameController.suspendFlashlight('transition');
+      flashlightSuspended = true;
+    } catch (err) {
+      console.warn('[LevelLoader] suspendFlashlight failed:', err);
+    }
+  }
+
   try {
     clearCurrentLevel(scene);
 
@@ -340,12 +350,18 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     if (showLoading) {
       hideLoadingOverlay();
     }
+    if (flashlightSuspended && gameController && typeof gameController.resumeFlashlight === 'function') {
+      try { gameController.resumeFlashlight('transition'); } catch (err) { console.warn('[LevelLoader] resumeFlashlight failed:', err); }
+    }
     isTransitioning = false;
     return true;
   } catch (err) {
     console.error('[LevelLoader] Error during generic level transition:', err);
     if (showLoading) {
       hideLoadingOverlay();
+    }
+    if (flashlightSuspended && gameController && typeof gameController.resumeFlashlight === 'function') {
+      try { gameController.resumeFlashlight('transition'); } catch (e2) { console.warn('[LevelLoader] resumeFlashlight failed after error:', e2); }
     }
     isTransitioning = false;
     return false;

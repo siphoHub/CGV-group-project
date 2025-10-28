@@ -549,6 +549,23 @@ export class HUD {
     return this.isFlashlightOn;
   }
 
+  setFlashlightOn(state) {
+    if (!this.hasFlashlight) return false;
+    const desired = !!state;
+    if (desired && (this.flashlightEnergy <= 0 || this.batteryLife <= 0)) {
+      this.isFlashlightOn = false;
+      this._updateFlashlightUI();
+      return false;
+    }
+    if (this.isFlashlightOn === desired) {
+      return this.isFlashlightOn;
+    }
+    this.isFlashlightOn = desired;
+    this._updateFlashlightUI();
+    if (!desired) this.updateBatteryDisplay();
+    return this.isFlashlightOn;
+  }
+
   // ---------------- Main loop ----------------
   _tick(now) {
     // Guard to avoid huge dt accumulation when paused or when first run

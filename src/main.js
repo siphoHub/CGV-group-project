@@ -52,8 +52,8 @@ let doorManager = null;
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0,1.7,-8);
-camera.lookAt(0, 1.7, 0);
+camera.position.set(0,1.7,-2);
+camera.lookAt(0, 1.7, 10);
 
 
 
@@ -106,25 +106,31 @@ window.addEventListener('keycard:used', async (e) => {
   console.log('[main] Keycard used, transitioning to', target, 'with message:', message);
 
   try { controls.unlock(); } catch {}
+  if (gameController && typeof gameController.suspendFlashlight === 'function') {
+    try { gameController.suspendFlashlight('cutscene-keycard'); } catch (err) { console.warn('[main] suspendFlashlight before cutscene23 failed:', err); }
+  }
 
   const l23 = new cutscene23('/models/assets/cutscene23.png');
 
-  let level3TransitionPromise = null;
   let level3TransitionResolved = false;
+  const level3TransitionPromise = (async () => {
+    try {
+      return await transitionToLevel(target, scene, gameController, camera, {
+        message,
+        showLoadingScreen: false
+      });
+    } catch (err) {
+      console.error('[main] Background transition to level3 failed:', err);
+      throw err;
+    } finally {
+      level3TransitionResolved = true;
+    }
+  })();
 
   l23.play( 
     async () => {
       let overlayShown = false;
       try {
-        if (!level3TransitionPromise) {
-          level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
-            message,
-            showLoadingScreen: false
-          });
-          level3TransitionPromise.finally(() => {
-            level3TransitionResolved = true;
-          });
-        }
         if (!level3TransitionResolved) {
           showLoadingOverlay(message);
           overlayShown = true;
@@ -142,18 +148,9 @@ window.addEventListener('keycard:used', async (e) => {
           hideLoadingOverlay();
         }
         _cutscene23Playing = false;
-      }
-    },
-    () => {
-      if (!level3TransitionPromise) {
-        level3TransitionResolved = false;
-        level3TransitionPromise = transitionToLevel(target, scene, gameController, camera, {
-          message,
-          showLoadingScreen: false
-        });
-        level3TransitionPromise.finally(() => {
-          level3TransitionResolved = true;
-        });
+        if (gameController && typeof gameController.resumeFlashlight === 'function') {
+          try { gameController.resumeFlashlight('cutscene-keycard'); } catch (err) { console.warn('[main] resumeFlashlight after cutscene23 failed:', err); }
+        }
       }
     }
   );
@@ -446,7 +443,7 @@ let coordHudVisible = false;
 
 function initializeGame(lights) {
   // place player at spawn (you can tune this)
-  resetPlayer();
+  //resetPlayer();
 
   // DoorManager will be initialized when Level 2 loads
   console.log('[Game] Game initialized, DoorManager will be set up when Level 2 loads');
@@ -907,6 +904,10 @@ function initializeGame(lights) {
     controls.lock(); // Re-enable mouse look
     currentCode = '';
     updateKeycodeDisplay();
+    if (keycodeInterface.dataset.flashlightSuspended === 'true' && gameController && typeof gameController.resumeFlashlight === 'function') {
+      try { gameController.resumeFlashlight('keycode'); } catch (err) { console.warn('[Keycode] resumeFlashlight failed', err); }
+    }
+    delete keycodeInterface.dataset.flashlightSuspended;
   };
   
   window.addDigit = function(digit) {
@@ -1091,6 +1092,9 @@ function initializeGame(lights) {
           keycodeInterface.style.display = 'block';
           // Unlock controls so player can interact with UI
           controls.unlock();
+          if (keycodeInterface.dataset.flashlightSuspended !== 'true' && gameController && typeof gameController.suspendFlashlight === 'function') {
+            try { gameController.suspendFlashlight('keycode'); keycodeInterface.dataset.flashlightSuspended = 'true'; } catch (err) { console.warn('[Keycode] suspendFlashlight failed', err); }
+          }
           console.log('[Keycode] Opening security terminal interface');
         }
       } else if (nearest.name === 'defaultMaterial001_1' && nearest.userData.interactionType === 'computer') {
@@ -1158,26 +1162,32 @@ function initializeGame(lights) {
           window._elevatorCutscenePlaying = true;
 
           controls.unlock();
+          if (gameController && typeof gameController.suspendFlashlight === 'function') {
+            try { gameController.suspendFlashlight('cutscene-elevator'); } catch (err) { console.warn('[main] suspendFlashlight before elevator cutscene failed:', err); }
+          }
 
           //play elevator cutscene and load level 2 in background
           const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
-          let level2TransitionPromise = null;
           let level2TransitionResolved = false;
+          const level2TransitionPromise = (async () => {
+            try {
+              return await transitionToLevel('level2', scene, gameController, camera, {
+                message: 'Entering Level 2...',
+                showLoadingScreen: false
+              });
+            } catch (err) {
+              console.error('[main] Background transition to level2 failed:', err);
+              throw err;
+            } finally {
+              level2TransitionResolved = true;
+            }
+          })();
           elevatorCutscene.play(
             async () => {
               console.log('[Elevator] Cutscene finished — progressing to Level 2...');
               console.log('[Elevator] Taking elevator to Level 2...');
               let overlayShown = false;
               try {
-                if (!level2TransitionPromise) {
-                  level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
-                    message: 'Entering Level 2...',
-                    showLoadingScreen: false
-                  });
-                  level2TransitionPromise.finally(() => {
-                    level2TransitionResolved = true;
-                  });
-                }
                 if (!level2TransitionResolved) {
                   showLoadingOverlay('Entering Level 2...');
                   overlayShown = true;
@@ -1195,18 +1205,9 @@ function initializeGame(lights) {
                   hideLoadingOverlay();
                 }
                 window._elevatorCutscenePlaying = false;
-              }
-            },
-            () => {
-              if (!level2TransitionPromise) {
-                level2TransitionResolved = false;
-                level2TransitionPromise = transitionToLevel('level2', scene, gameController, camera, {
-                  message: 'Entering Level 2...',
-                  showLoadingScreen: false
-                });
-                level2TransitionPromise.finally(() => {
-                  level2TransitionResolved = true;
-                });
+                if (gameController && typeof gameController.resumeFlashlight === 'function') {
+                  try { gameController.resumeFlashlight('cutscene-elevator'); } catch (err) { console.warn('[Elevator] resumeFlashlight failed after cutscene:', err); }
+                }
               }
             }
 
@@ -1301,8 +1302,8 @@ function resetPlayer() {
     console.log('[reset] Player position reset level3');
   }
   else if (level === "level1"){
-    camera.position.set(0, 1.7, -5);
-    camera.lookAt(0, 1.7, -4);
+    camera.position.set(0, 1.7, -2);
+    camera.lookAt(0, 1.7, 10);
     console.log('[reset] Player position reset level1');
   }
 }
