@@ -16,7 +16,8 @@ export function isLevelTransitioning() {
 }
 
 export function loadLevel(levelName, scene) {
-  levelName = "level3" //remove
+  //levelName = "level3" //remove
+  currentLevel = levelName;
   switch (levelName) {
     case "level1":
       return loadLevel1(scene);
@@ -224,10 +225,16 @@ export async function transitionToLevel(levelName, scene, gameController, camera
     }
 
     // Default camera reset for new levels (can be overridden by specific levels)
-    if (camera) {
+        if (camera) {
       if (levelName === 'level3') {
         // If colliders are available, pick the best floor-like collider to spawn above it
         let placed = false;
+        if (!placed) {
+          camera.position.set(5.76, 1.7, -1.07);
+          camera.lookAt(-5.25, 1.7, -1.07);
+          placed = true;
+          console.log('[LevelLoader] Spawn override applied for Level 3');
+        }
         // Try to find a named spawn marker first (highest priority)
         try {
           const findByName = (root, name) => {

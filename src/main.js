@@ -1253,11 +1253,18 @@ function initializeGame(lights) {
 
 // --- Helpers ---
 function resetPlayer() {
-  // Default starting spawn for Level 1 (inside the building)
-  camera.position.set(0, 1.7, -5);
-  // Face forward into the building
-  camera.lookAt(0, 1.7, -4);
-  console.log('[reset] Player position reset');
+  let level = getCurrentLevel();
+
+  if (level === "level3"){
+    camera.position.set(5.76, 1.7, -1.07);
+    camera.lookAt(-5.25, 1.7, -1.07);
+    console.log('[reset] Player position reset level3');
+  }
+  else if (level === "level1"){
+    camera.position.set(0, 1.7, -5);
+    camera.lookAt(0, 1.7, -4);
+    console.log('[reset] Player position reset level1');
+  }
 }
 
 function initializeDoorManager() {
