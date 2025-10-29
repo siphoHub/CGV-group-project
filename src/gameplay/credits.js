@@ -13,13 +13,13 @@ Group members
 Sipho Jr. Mntambo 2430285 
 Adrusha Reddy 2667194 
 Lauren Lachman 2702445 
-Aluwani Nndwamato 2671832 
 Colby Subramoney 2604668 
 Kaylee Bibis 2538031
 
 Background imagery
 • Level 1 to 2 cutscene: "Eerie Abandoned Elevator" photo by Stockcake - https://stockcake.com/i/eerie-abandoned-elevator_1179472_95384
 • Level 2 to 3 cutscene: Generated with ChatGPT
+• End cutscene: Generated with ChatGPT
 
 Sounds & music
 • Monster bellowing - Thanra - https://freesound.org/s/245429/
@@ -27,15 +27,16 @@ Sounds & music
 • Heavy breathing scared male - DeqstersLab - https://freesound.org/s/721351/
 • Metallic clatter - Porphyr - https://freesound.org/s/192067/
 • Creepy old elevator 2 - bassboybg - https://freesound.org/s/218928/
+• R09-63-Large Building Fire - craigsmith - https://freesound.org/s/483308/
 • Background ambience - Pixabay freesound_community - https://pixabay.com/users/freesound_community-46691455/
 
 Videos
 • In-engine capture by CGV team
 
 Models
-• Rats - Lauren
-• Specimen tank base - Lauren
-• Pipes on wall - Lauren
+• Rats - Lauren Lachman
+• Specimen tank base - Lauren Lachman
+• Pipes on wall - Lauren Lachman
 • Creature Specimen Jar - Michael V (Sketchfab Free) - https://skfb.ly/prFLr
 • Dead Body - Lukas Bobor (CC Attribution) - https://skfb.ly/RDwI
 • Exit Door - barbodoji (CC Attribution) - https://skfb.ly/pupIB
