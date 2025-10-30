@@ -1,3 +1,5 @@
+import { assetUrl } from '../utils/assets.js';
+
 // HUD System for Mutation Detective Horror Game (three.js DOM overlay, parchment objectives)
 export class HUD {
   constructor() {
@@ -34,6 +36,10 @@ export class HUD {
 
   // ---------------- UI ----------------
   createHudElements() {
+    const flashlightIcon = assetUrl('assets/FlashlightIcon.jpg');
+    const keycardIcon = assetUrl('assets/KeycardIcon.png');
+    const minimapImage = assetUrl('assets/level3map.png');
+
     this.hudContainer = document.createElement('div');
     this.hudContainer.id = 'game-hud';
     this.hudContainer.innerHTML = `
@@ -55,7 +61,7 @@ export class HUD {
         <h4>INVENTORY</h4>
         <div id="inventory-items">
           <div id="flashlight-item" class="inventory-item hidden">
-            <img src="/models/assets/FlashlightIcon.jpg"
+            <img src="${flashlightIcon}"
                  alt="Flashlight" class="inventory-icon flashlight-image">
             <span class="inventory-label">Flashlight</span>
           </div>
@@ -68,7 +74,7 @@ export class HUD {
             <span class="inventory-label">Batteries</span>
           </div>
           <div id="keycard-item" class="inventory-item hidden">
-            <img src="/models/assets/KeycardIcon.png"
+            <img src="${keycardIcon}"
                  alt="Keycard" class="inventory-icon keycard-image">
             <span class="inventory-label">Keycard</span>
           </div>
@@ -112,7 +118,7 @@ export class HUD {
       </div>
 
       <div id="hud-minimap" class="hud-minimap hidden" aria-hidden="true">
-        <img id="hud-minimap-image" src="/models/assets/level3map.png" alt="Level 3 facility layout">
+        <img id="hud-minimap-image" src="${minimapImage}" alt="Level 3 facility layout">
         <div id="hud-minimap-arrow"></div>
       </div>
     `;

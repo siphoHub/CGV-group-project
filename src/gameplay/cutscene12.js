@@ -1,3 +1,5 @@
+import { assetUrl } from '../utils/assets.js';
+
 //cutscene between levels 1 and 2
 
 export class cutscene12{
@@ -216,14 +218,14 @@ export class cutscene12{
 
     // --- Sound helper functions ---
     playElevatorSound() {
-        this.elevatorSound = new Audio("models/assets/elevator_loop.wav");
+        this.elevatorSound = new Audio(assetUrl('assets/elevator_loop.wav'));
         this.elevatorSound.loop = true;
         this.elevatorSound.volume = 0.4; // subtle hum
         this.elevatorSound.play().catch(() => {});
     }
 
     playGrowlSound() {
-        this.growlSound = new Audio("models/assets/elevator_growl.wav");
+        this.growlSound = new Audio(assetUrl('assets/elevator_growl.wav'));
         this.growlSound.volume = 0.7; // scary, more prominent
         this.growlSound.play().catch(() => {});
     }

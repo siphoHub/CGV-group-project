@@ -1,3 +1,5 @@
+import { assetUrl } from '../utils/assets.js';
+
 //cutscene between levels 2 and 3
 
 export class cutscene23{
@@ -275,7 +277,7 @@ startAnimations() {
 
   playMetalSound(delay) {
     setTimeout(() => {
-      this.metalSound = new Audio("models/assets/metal_clatter.wav");
+      this.metalSound = new Audio(assetUrl('assets/metal_clatter.wav'));
       this.metalSound.volume = 0.7;
       this.metalSound.play();
     }, delay);
@@ -283,7 +285,7 @@ startAnimations() {
 
   playCreatureSound(delay) {
     setTimeout(() => {
-      this.creatureSound = new Audio("models/assets/creature_run.wav");
+      this.creatureSound = new Audio(assetUrl('assets/creature_run.wav'));
       this.creatureSound.volume = 0.8;
       this.creatureSound.play();
     }, delay);
@@ -291,7 +293,7 @@ startAnimations() {
 
   playFlashlightSound(delay) {
     setTimeout(() => {
-      this.flashlightSound = new Audio("models/assets/flashlight_break.wav");
+      this.flashlightSound = new Audio(assetUrl('assets/flashligt_break.wav'));
       this.flashlightSound.volume = 0.8;
       this.flashlightSound.play();
     }, delay);
@@ -299,7 +301,7 @@ startAnimations() {
 
   playBreathingSound(delay) {
     setTimeout(() => {
-      this.breathingSound = new Audio("models/assets/heavy_breathing.mp3");
+      this.breathingSound = new Audio(assetUrl('assets/heavy_breathing.mp3'));
       this.breathingSound.volume = 0.6;
       this.breathingSound.loop = false;
       this.breathingSound.play();

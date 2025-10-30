@@ -1,12 +1,13 @@
 //level3
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { assetUrl } from "../utils/assets.js";
 
 export default async function loadLevel3(scene) {
   const loader = new GLTFLoader();
 
   try{
-    const gltf = await loader.loadAsync("/models/blenderL3.glb");
+    const gltf = await loader.loadAsync(assetUrl("blenderL3.glb"));
 
 
      const lab = gltf.scene;
@@ -380,7 +381,7 @@ export default async function loadLevel3(scene) {
 
           // Play rat squeaks audio (non-positional)
           try {
-            const rat = new Audio('/models/assets/rat squeaks.mp3');
+            const rat = new Audio(assetUrl('assets/rat squeaks.mp3'));
             rat.volume = 0.85;
             rat.play().catch(() => {
               // resume on next user gesture if autoplay blocked

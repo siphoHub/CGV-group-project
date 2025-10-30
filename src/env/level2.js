@@ -1,12 +1,13 @@
 //level2
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { assetUrl } from "../utils/assets.js";
 
 export default async function loadLevel2(scene) {
   const loader = new GLTFLoader();
 
   try{
-    const gltf = await loader.loadAsync("/models/blenderL2.glb");
+    const gltf = await loader.loadAsync(assetUrl("blenderL2.glb"));
 
     const facility = gltf.scene;
     facility.scale.set(1, 1, 1);

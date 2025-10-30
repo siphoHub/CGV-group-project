@@ -7,6 +7,7 @@ import { createControls } from "./controls/controls.js";
 import {createLighting} from "./lighting/level1.js"
 import { DoorManager } from "./gameplay/Doors.js";
 import { StartScreen } from "./gameplay/startScreen.js";
+import { assetUrl } from "./utils/assets.js";
 
 import { cutscene12 } from "./gameplay/cutscene12.js";    
 import { cutscene23 } from "./gameplay/cutscene23.js";
@@ -110,7 +111,7 @@ window.addEventListener('keycard:used', async (e) => {
     try { gameController.suspendFlashlight('cutscene-keycard'); } catch (err) { console.warn('[main] suspendFlashlight before cutscene23 failed:', err); }
   }
 
-  const l23 = new cutscene23('/models/assets/cutscene23.png');
+  const l23 = new cutscene23(assetUrl('assets/cutscene23.png'));
 
   let level3TransitionResolved = false;
   const level3TransitionPromise = (async () => {
@@ -223,7 +224,7 @@ let backgroundMusic = null;
 
 function startBackgroundMusic() {
   if (!backgroundMusic) {
-    backgroundMusic = new Audio('/models/assets/scary-horror-music-351315.mp3');
+    backgroundMusic = new Audio(assetUrl('assets/scary-horror-music-351315.mp3'));
     backgroundMusic.loop = true;
     backgroundMusic.volume = 0.3; // Set volume to 30% so it's not too loud
 
@@ -296,11 +297,11 @@ let accessDeniedSound = null;
 
 function loadKeycodeSounds() {
   if (!accessGrantedSound) {
-    accessGrantedSound = new Audio('/models/assets/access-granted.mp3');
+    accessGrantedSound = new Audio(assetUrl('assets/access-granted.mp3'));
     accessGrantedSound.volume = 0.5;
   }
   if (!accessDeniedSound) {
-    accessDeniedSound = new Audio('/models/assets/denied-sound.mp3');
+    accessDeniedSound = new Audio(assetUrl('assets/denied-sound.mp3'));
     accessDeniedSound.volume = 0.5;
   }
 }
@@ -578,9 +579,10 @@ function initializeGame(lights) {
   // Create handwritten note interface
   const noteInterface = document.createElement("div");
   noteInterface.id = "note-interface";
+  const noteBackground = assetUrl('assets/ObjectivesPage.png');
   noteInterface.style.cssText = `
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    background: url('/models/assets/ObjectivesPage.png') no-repeat center center;
+    background: url('${noteBackground}') no-repeat center center;
     background-size: cover; color: #2c2c2c; padding: 0; border-radius: 15px;
     font-family: 'Georgia', 'Times New Roman', serif; z-index: 2000; display: none;
     width: 90%; max-width: 1400px; height: 90%; max-height: 900px;
@@ -683,49 +685,50 @@ function initializeGame(lights) {
     document.body.appendChild(logViewer);
 
     // map object names (or ids) to arrays of image paths + caption
+    const logAssets = (...paths) => paths.map((p) => assetUrl(`assets/logs/${p}`));
     const LOG_IMAGE_MAP = {
       'testingRoom1_Log1': {
-        images: ['/models/assets/logs/testingRoom1_Log1.png'
-        ],
+        images: logAssets('testingRoom1_Log1.png'
+        ),
         caption: 'Log — Testing Room 1'
       },
       'testingRoom1_Log2': {
-        images: ['/models/assets/logs/testingRoom1_Log2.png'],
+        images: logAssets('testingRoom1_Log2.png'),
         caption: 'Log — Testing Room 1 (2)'
       },
       'testingRoom2_Log1': {
-        images: ['/models/assets/logs/testingRoom2_Log1.png',
-          '/models/assets/logs/testingRoom2_Log2.png'
-        ],
+        images: logAssets('testingRoom2_Log1.png',
+          'testingRoom2_Log2.png'
+        ),
         caption: 'Log — Testing Room 2'
       },
       'testingRoom2_Log2': {
-        images: ['/models/assets/logs/testingRoom2_Log3.png'],
+        images: logAssets('testingRoom2_Log3.png'),
         caption: 'Log — Testing Room 2 (2)'
       },
       
       'office1_Log1': {
-        images: [
-          '/models/assets/logs/office1_Log1.png',
-          '/models/assets/logs/office1_Log2.png'
-        ],
+        images: logAssets(
+          'office1_Log1.png',
+          'office1_Log2.png'
+        ),
         caption: 'Notes'
       },
       'office2_Log2': {
-        images: ['/models/assets/logs/office2_Log1.png',
-          '/models/assets/logs/office2_Log2.png',
-          '/models/assets/logs/office2_Log3.png'
-        ],
+        images: logAssets('office2_Log1.png',
+          'office2_Log2.png',
+          'office2_Log3.png'
+        ),
         caption: 'Office 2 Log'
       },
 
       'log':{
-        images: ['/models/assets/logs/revealAll1.png',
-          '/models/assets/logs/revealAll2.png',
-          '/models/assets/logs/revealAll3.png',
-          '/models/assets/logs/revealAll4.png',
-          '/models/assets/logs/revealAll5.png'
-        ],
+        images: logAssets('revealAll1.png',
+          'revealAll2.png',
+          'revealAll3.png',
+          'revealAll4.png',
+          'revealAll5.png'
+        ),
         caption: 'Log'
       }
     };
@@ -770,7 +773,7 @@ function initializeGame(lights) {
       } else {
         // fallback
         currentLogKey = key;
-        currentImages = ['/models/assets/logs/log_placeholder.png'];
+        currentImages = [assetUrl('assets/logs/log_placeholder.png')];
         captionEl.textContent = `Log: ${key}`;
       }
       showIndex(0);
@@ -1167,7 +1170,7 @@ function initializeGame(lights) {
           }
 
           //play elevator cutscene and load level 2 in background
-          const elevatorCutscene = new cutscene12("models/assets/elevator-cutscene.jpg");
+          const elevatorCutscene = new cutscene12(assetUrl('assets/elevator-cutscene.jpg'));
           let level2TransitionResolved = false;
           const level2TransitionPromise = (async () => {
             try {

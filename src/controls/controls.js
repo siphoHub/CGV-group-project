@@ -1,5 +1,6 @@
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import * as THREE from 'three';
+import { assetUrl } from '../utils/assets.js';
 
 export function createControls(camera, domElement) {
   const controls = new PointerLockControls(camera, domElement);
@@ -8,20 +9,20 @@ export function createControls(camera, domElement) {
   controls.addEventListener('unlock', () => console.log('[controls] UNLOCKED'));
 
   // --- Footstep SFX ---------------------------------------------------------
-  // Drop 4–8 eerie footstep clips into /public/models/assets/
+  // Drop 4–8 eerie footstep clips into public/models/assets/
   const FOOTSTEP_PATHS = [
-    '../public/models/assets/step1.mp3',
-    '../public/models/assets/step2.mp3',
-    '../public/models/assets/step3.mp3',
-    '../public/models/assets/step4.mp3',
-    '../public/models/assets/step5.mp3',
-    '../public/models/assets/step5.mp3',
-    '../public/models/assets/step6.mp3',
-    '../public/models/assets/step7.mp3',
-    '../public/models/assets/step8.mp3',
-    '../public/models/assets/step9.mp3',
-    '../public/models/assets/step10.mp3',
-  ];
+    'assets/step1.mp3',
+    'assets/step2.mp3',
+    'assets/step3.mp3',
+    'assets/step4.mp3',
+    'assets/step5.mp3',
+    'assets/step5.mp3',
+    'assets/step6.mp3',
+    'assets/step7.mp3',
+    'assets/step8.mp3',
+    'assets/step9.mp3',
+    'assets/step10.mp3',
+  ].map(assetUrl);
   // Preload a small pool so rapid steps don’t get cut off
   const footstepPool = FOOTSTEP_PATHS.map(p => {
     const a = new Audio(p);

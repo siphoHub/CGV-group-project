@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { HUD } from './hud.js';
 import ZipOverlay from './zipOverlay.js';
 import { showCreditsOverlay } from './credits.js';
+import { assetUrl } from '../utils/assets.js';
 
 import { endcutscene } from './endcutscene.js';
 
@@ -32,25 +33,25 @@ export class GameController {
 
 
     // Audio system for sound effects
-    this.itemPickupSound = new Audio('../public/models/assets/ItemPickupSound.mp3');
+    this.itemPickupSound = new Audio(assetUrl('assets/ItemPickupSound.mp3'));
     this.itemPickupSound.volume = 0.5; // Set volume to 50%
 
-    this.flashlightSwitchSound = new Audio('../public/models/assets/FlashlightSwitch.mp3');
+    this.flashlightSwitchSound = new Audio(assetUrl('assets/FlashlightSwitch.mp3'));
     this.flashlightSwitchSound.volume = 1; // Set volume to 100%
 
-    this.generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
+    this.generatorSound = new Audio(assetUrl('assets/GeneratorTurnedOn.mp3'));
     this.generatorSound.volume = 1.0; // Set volume to 100% (increased)
 
-    this.scaryScreamSound = new Audio('../public/models/assets/ScaryScream.mp3');
+    this.scaryScreamSound = new Audio(assetUrl('assets/ScaryScream.mp3'));
     this.scaryScreamSound.volume = 0.7; // Set volume to 70%
 
   // Mini-game audio cues
-  this.deniedSound = new Audio('../public/models/assets/denied-sound.mp3');
+  this.deniedSound = new Audio(assetUrl('assets/denied-sound.mp3'));
   this.deniedSound.volume = 0.9;
-  this.selfDestructSound = new Audio('../public/models/assets/self destruct initiated.mp3');
+  this.selfDestructSound = new Audio(assetUrl('assets/self destruct initiated.mp3'));
   this.selfDestructSound.volume = 0.9;
   // Extra soundtrack to play shortly after successful Zip completion
-  this.surgeonAttackSound = new Audio('../public/models/assets/Samuel_Laflamme_-_Surgeon_Attack_Outlast_OST.mp3');
+  this.surgeonAttackSound = new Audio(assetUrl('assets/Samuel_Laflamme_-_Surgeon_Attack_Outlast_OST.mp3'));
   this.surgeonAttackSound.volume = 0.9;
 
   // Track whether the Zip mini-game has been completed (won) so it cannot be replayed
@@ -473,7 +474,7 @@ stopRoomFlashing() {
         this.stopEscapeCountdown();
         const ov2 = document.getElementById('escape-countdown-overlay'); if (ov2) ov2.style.display = 'none';
         try {
-          const ex = new Audio('../public/models/assets/explosion.mp3');
+          const ex = new Audio(assetUrl('assets/explosion.mp3'));
           ex.volume = 1.0;
           ex.play().catch(() => {});
   } catch (err) { void err; }
@@ -556,7 +557,7 @@ stopRoomFlashing() {
     console.log('Generator triggered - switching to emergency lighting');
 
     // Play generator sound effect if available
-    const generatorSound = new Audio('../public/models/assets/GeneratorTurnedOn.mp3');
+    const generatorSound = new Audio(assetUrl('assets/GeneratorTurnedOn.mp3'));
     generatorSound.volume = 0.7;
     generatorSound.play().catch(() => {
       console.log('Generator sound failed to play');
@@ -1178,7 +1179,7 @@ stopRoomFlashing() {
 
       try {
         // Use same asset base as the rest of the project
-        const endcut = new endcutscene('../public/models/assets/endcutscene.png');
+        const endcut = new endcutscene(assetUrl('assets/endcutscene.png'));
         // START the cutscene and resolve when it completes
         try { endcut.play(finish); } catch (e) { void e; }
       } catch (e) { /* if construction fails, fall through to timeout */ }
@@ -1272,7 +1273,7 @@ stopRoomFlashing() {
     }
 
     // dramatic tick sound (optional) - create once and keep on the controller so it can be paused
-    try { this._escapeTickSound = new Audio('../public/models/assets/denied-sound.mp3'); this._escapeTickSound.volume = 0.8; } catch (err) { void err; this._escapeTickSound = null; }
+    try { this._escapeTickSound = new Audio(assetUrl('assets/denied-sound.mp3')); this._escapeTickSound.volume = 0.8; } catch (err) { void err; this._escapeTickSound = null; }
 
     // If the game is currently paused, mark countdown paused and don't start ticking until resume
     if (this.isPaused && this.hud && this.hud.getPauseState && this.hud.getPauseState()) {

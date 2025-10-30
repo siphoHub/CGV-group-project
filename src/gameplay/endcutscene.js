@@ -1,3 +1,5 @@
+import { assetUrl } from '../utils/assets.js';
+
 //cutscene between levels 1 and 2
 
 export class endcutscene{
@@ -208,7 +210,7 @@ export class endcutscene{
     }
 
    playFireSound() {
-        this.fireSound = new Audio('../public/models/assets/firesound.wav');
+        this.fireSound = new Audio(assetUrl('assets/firesound.wav'));
         this.fireSound.loop = false;
         this.fireSound.volume = 0.6; // foreground
 
@@ -227,7 +229,7 @@ export class endcutscene{
    playBackgroundSound({ startQuiet = false } = {}) {
         if (!this.isPlaying) return;
         if (!this.endSound) {
-            this.endSound = new Audio('../public/models/assets/scary-horror-music-351315.mp3');
+            this.endSound = new Audio(assetUrl('assets/scary-horror-music-351315.mp3'));
             this.endSound.loop = true;
             this.endSound.volume = startQuiet ? 0.08 : 0.35; // underlay
         } else if (startQuiet) {
